@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package com.tcoverwatch.v1;
+
+option java_package = "com.tcoverwatch.v1";
+option java_multiple_files = true;
+
+// PingService — smoke-test surface that exercises the gRPC + service +
+// persistence stack end-to-end. First real service to replace this proves
+// the layered pattern works; until then, this validates the toolchain.
+service PingService {
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+message PingRequest {
+  // Free-form text echoed back. Validated at the controller boundary
+  // (non-empty, max length).
+  string message = 1;
+}
+
+message PingResponse {
+  // Echo of the request message.
+  string echo = 1;
+
+  // ISO-8601 timestamp the server received the request.
+  string server_received_at = 2;
+
+  // DB-assigned id for the persisted ping row. Proves the persistence layer
+  // ran (entity created and committed).
+  int64 id = 3;
+}

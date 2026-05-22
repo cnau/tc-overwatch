@@ -1,0 +1,54 @@
+# Base config — overlaid by profile-specific files (application-local.yml, application-unraid.yml, application-prod.yml).
+# Secrets never live in this file; they come from env vars or the Spring profile's resolved secret source.
+
+spring:
+  application:
+    name: tc-overwatch-server
+
+  # Liquibase is OFF by default in this base config. Migrations run as a separate
+  # one-shot `migrate` container (the `tco_migrate` DB role) in the deploy workflow.
+  # Local-dev profile turns it on for convenience (see application-local.yml).
+  liquibase:
+    enabled: false
+    change-log: classpath:/db/changelog/db.changelog-master.groovy
+
+  jpa:
+    hibernate:
+      ddl-auto: validate   # never auto-modify schema; Liquibase owns it
+    properties:
+      hibernate:
+        format_sql: false
+    open-in-view: false    # avoid OSIV antipattern; DAOs return DTOs, not entities
+
+  jackson:
+    default-property-inclusion: non_null
+
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+# gRPC server (separate port from the HTTP server)
+grpc:
+  server:
+    port: 9090
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+
+logging:
+  level:
+    root: INFO
+    com.tcoverwatch: DEBUG

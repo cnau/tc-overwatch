@@ -1,0 +1,11 @@
+version: v2
+modules:
+  - path: proto/src/main/proto
+lint:
+  use:
+    - STANDARD
+  except:
+    - PACKAGE_VERSION_SUFFIX   # we use `v1` already; the rule is overly strict for our layout
+breaking:
+  use:
+    - FILE

@@ -1,0 +1,93 @@
+// :server — the Spring Boot application. gRPC + HTTP server, JPA persistence,
+// Liquibase migrations, MapStruct conversions, feature-by-package layout.
+
+plugins {
+    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kotlin.spring)
+    alias(libs.plugins.kotlin.jpa)
+    alias(libs.plugins.kotlin.kapt)
+    alias(libs.plugins.springBoot)
+    alias(libs.plugins.springDepMgmt)
+    alias(libs.plugins.detekt)
+    alias(libs.plugins.ktlint)
+}
+
+java {
+    toolchain {
+        // Spring Boot 4 requires Java 21+. Using 23 because it's what's installed locally
+        // and satisfies the requirement; CI / Docker images may pin to 21 specifically.
+        languageVersion.set(JavaLanguageVersion.of(23))
+    }
+}
+
+kotlin {
+    jvmToolchain(23)
+    compilerOptions {
+        freeCompilerArgs.addAll("-Xjsr305=strict")
+    }
+}
+
+// Spring Boot Cloud Native Buildpacks — produces an OCI image without writing a Dockerfile.
+// Used by CI in the build-server pipeline; runs locally via `./gradlew :server:bootBuildImage`.
+springBoot {
+    buildInfo()
+}
+
+dependencies {
+    // Generated proto stubs (Kotlin/Java gRPC types live here)
+    implementation(project(":proto"))
+
+    // Spring Boot starters (versions managed by the BOM)
+    implementation(libs.springBoot.starter.web)
+    implementation(libs.springBoot.starter.data.jpa)
+    implementation(libs.springBoot.starter.actuator)
+    implementation(libs.springBoot.starter.validation)
+
+    // gRPC server starter — wraps grpc-java in Spring conventions. Watch item: confirm
+    // Spring Boot 4 compatibility at first build; fall back to direct grpc-java config if not.
+    implementation(libs.grpc.springStarter.server)
+    implementation(libs.grpc.services) // reflection, health checks
+    runtimeOnly(libs.grpc.netty.shaded)
+
+    // Persistence
+    runtimeOnly(libs.postgres.jdbc)
+    implementation(libs.liquibase.core)
+    implementation(libs.liquibase.groovyDsl)
+
+    // MapStruct — boundary-layer conversions (proto ↔ service DTO, service DTO ↔ entity)
+    implementation(libs.mapstruct)
+    kapt(libs.mapstruct.processor)
+
+    // Kotlin
+    implementation(libs.kotlin.reflect)
+    implementation(libs.kotlin.stdlib)
+
+    // Tests
+    testImplementation(libs.springBoot.starter.test) {
+        exclude(group = "org.mockito") // we use MockK
+    }
+    testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter)
+    testImplementation(libs.mockk)
+    testImplementation(libs.assertk)
+    testImplementation(platform(libs.testcontainers.bom))
+    testImplementation(libs.testcontainers.junit)
+    testImplementation(libs.testcontainers.postgres)
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
+}
+
+ktlint {
+    version.set("1.4.1")
+    filter {
+        exclude { it.file.path.contains("/generated/") }
+    }
+}
+
+detekt {
+    buildUponDefaultConfig = true
+    allRules = false
+    config.setFrom(rootProject.files("detekt.yml"))
+}

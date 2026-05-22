@@ -1,0 +1,28 @@
+# Local-dev profile. Activate via SPRING_PROFILES_ACTIVE=local or ./gradlew bootRun --args='--spring.profiles.active=local'.
+# Pairs with docker-compose.local.yml — start that first, then start the server.
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/tco
+    username: tco_app
+    password: tco_app_local_password
+    driver-class-name: org.postgresql.Driver
+
+  # In local dev, Liquibase runs at startup for convenience (no separate migrate container).
+  # NOTE: this uses the app DB user (tco_app), not the migrate role. Override in local docker-compose
+  # to run migrations as tco_migrate before the app starts if RLS gets in the way.
+  liquibase:
+    enabled: true
+    user: tco_app
+    password: tco_app_local_password
+
+  jpa:
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+logging:
+  level:
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql: TRACE
