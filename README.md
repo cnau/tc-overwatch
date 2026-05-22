@@ -37,7 +37,7 @@ Automates the repetitive, time-consuming tasks that fill a real-estate transacti
 
 ## Local development
 
-Requires JDK 21 (Gradle's toolchain auto-provisioning will download it if not installed), Node 22+, Docker.
+Requires **JDK 21+** (Spring Boot 4 minimum; the current scaffold pins to JDK 23 because it was the locally-installed version on the dev machine — see `docs/architecture.md` § Scaffold notes for the foojay auto-download caveat), **Node 22+**, and **Docker**.
 
 ```bash
 # 1. Start local Postgres + role setup

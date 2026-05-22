@@ -532,8 +532,17 @@ These are implementation choices to make at code-writing time, not in this doc:
 
 Spring Boot 4 + Spring Framework 7 are recent enough that **third-party Spring Boot starters may not yet have GA-tagged compatible releases**. The most likely friction points:
 
-- gRPC Spring starters (community-maintained, historically lag Spring Boot majors by 3–6 months)
-- Any Spring Security extensions
-- JPA-extension libraries
+- gRPC Spring starters (community-maintained, historically lag Spring Boot majors by 3–6 months) — **resolved on the initial scaffold**: `net.devh:grpc-server-spring-boot-starter:3.1.0.RELEASE` compiles and resolves dependencies cleanly against Spring Boot 4.0.6 + Kotlin 2.2.0 + JDK 23. Watch for runtime issues if/when this changes.
+- Any Spring Security extensions — still untested; first usage lands when auth is implemented.
+- JPA-extension libraries — base Spring Data JPA loads fine.
 
 Mitigation: pin to specific Spring Boot 4–compatible versions where they exist; fall back to direct grpc-java integration without a Spring starter if necessary.
+
+## Scaffold notes (from `scaffold/initial` branch)
+
+Things discovered while building the initial scaffold that are worth remembering:
+
+- **JDK toolchain**: the `org.gradle.toolchains.foojay-resolver-convention` plugin at version `0.10.0` has a known bug with Gradle 9.5.1 (throws `"IBM_SEMERU"` when attempting auto-download). Workaround used: rely on a locally-installed JDK (Java 23 on the dev machine) by setting the toolchain to `JavaLanguageVersion.of(23)` in both module build files. Revisit when foojay ships a fix or when JDK 21 is installed locally for stricter version alignment.
+- **Kotlin `internal` visibility on persistence classes**: cannot mark `PingEntity` / `PingRepository` / `PingEntityMapper` as `internal` because the public `PingDao` (called from the service layer) takes them as constructor parameters — a public function cannot expose an internal type. The "entities don't leak from DAOs" architectural principle is therefore **enforced by code review** (DAOs return DTOs, not entities) rather than by the Kotlin compiler. If stricter enforcement is desired later, options are: (a) make the entire `feature.<name>.persistence` package internal including the DAO, with the DAO consumed within the same module only (matches the current single-module layout); or (b) extract a `persistence-api` interface that's public and a private implementation. Neither is in v0 scope.
+- **MapStruct + proto-builder warning**: `PingProtoMapper` is currently a hand-rolled Kotlin class (not MapStruct) because proto messages use a builder pattern that surfaces a `Unmapped target properties` warning for all the builder-internal methods (`mergeFrom`, `clearField`, etc.). When migrating to MapStruct, add `@BeanMapping(ignoreUnmappedTargetProperties = true)` or explicit `@Mapping(target = "X", ignore = true)` for each.
+- **CI lint steps**: `.github/workflows/ci.yml` has `continue-on-error: true` on the `ktlintCheck`/`detekt` and frontend `npm run lint` steps. Remove these flags once the first clean lint pass is achieved.
