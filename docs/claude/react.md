@@ -167,7 +167,10 @@ Setup per Mantine's guide: `@mantine/core` + `@mantine/hooks`, import `@mantine/
 
 - Extract a custom hook when stateful logic repeats across 2+ components or a component has too many `useEffect` blocks to follow.
 - Check `@mantine/hooks` first — `useDebouncedValue`, `useDisclosure`, `useClickOutside`, `useElementSize`, `useLocalStorage`, `useMediaQuery`, and others are already there.
-- Naming: `useXxx` for accessor / query hooks, `useXxxMutation` for mutations.
+- Naming:
+  - **Queries → noun-first**: `useFoo`, `useFoos`, `useFooById(id)`. The hook returns data; the noun is what you want.
+  - **Mutations → verb-first**: `useCreateFoo`, `useUpdateFoo`, `useDeleteFoo`, `useSendPing`. The action is what matters at the call site; the verb makes it obvious which mutation you're calling when a resource has more than one.
+  - Avoid the RTK-Query-flavored `useFooMutation` suffix — fine for codegen, but for hand-written hooks the verb-first names read better and don't collide under themselves when a resource has multiple mutations.
 - Stable return shape per hook (tuple or object, not mixed).
 - > 2-3 `useEffect`s in one component is a smell — usually means state belongs in TanStack Query / route loaders / event handlers, not effects.
 

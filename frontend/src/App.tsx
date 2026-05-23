@@ -1,9 +1,9 @@
 import { Container, Stack, Group, Title, Text, Button, Card, Badge, Code, Alert } from '@mantine/core'
 
-import { usePingMutation } from '@/api/ping'
+import { useSendPing } from '@/api/ping'
 
 export default function App() {
-  const ping = usePingMutation()
+  const ping = useSendPing()
 
   return (
     <Container size="sm" py="xl">

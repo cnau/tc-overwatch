@@ -28,6 +28,6 @@ async function sendPing(req: PingRequest): Promise<PingResponse> {
   return (await res.json()) as PingResponse
 }
 
-export function usePingMutation() {
+export function useSendPing() {
   return useMutation({ mutationFn: sendPing })
 }
