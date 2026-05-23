@@ -1,21 +1,18 @@
-MIT License
+Copyright (c) 2026 Christian Nau. All rights reserved.
 
-Copyright (c) 2021 Christian Nau
+This source code and all associated materials are proprietary and
+confidential. No part of this codebase may be copied, modified, distributed,
+publicly disclosed, or used in any form — in source or binary — without the
+prior written consent of the copyright holder.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Access to this repository does not grant any license to its contents. View
+or clone access (whether via GitHub collaborator invitation or otherwise) is
+permitted solely to enable review, discussion, and authorized contribution
+through GitHub's platform, and confers no rights beyond that purpose.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+Contributions submitted to this repository remain subject to a separate
+written agreement with the copyright holder; absent such an agreement, no
+contributions are accepted.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED.
