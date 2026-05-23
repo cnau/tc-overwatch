@@ -54,3 +54,62 @@ jobs:
       - name: Lint
         run: npm run lint
 
+  # FE/BE type-sync gate. Boot Postgres + backend, regenerate frontend types from
+  # /v3/api-docs, fail if the committed file drifted from a fresh regen.
+  api-type-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Boot Postgres (compose mounts the role-provisioning init script)
+        run: docker compose -f docker-compose.local.yml up -d --wait
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Boot backend in background
+        run: |
+          ./gradlew :server:bootRun --args='--spring.profiles.active=local' > /tmp/server.log 2>&1 &
+
+      - name: Wait for /v3/api-docs
+        run: |
+          for i in $(seq 1 90); do
+            if curl -sf http://localhost:8080/v3/api-docs >/dev/null; then
+              echo "backend ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::backend did not expose /v3/api-docs in 90s"
+          tail -100 /tmp/server.log
+          exit 1
+
+      - name: Regenerate types
+        working-directory: frontend
+        run: npm run gen-api-types
+
+      - name: Fail on drift
+        run: |
+          if ! git diff --exit-code frontend/src/gen/; then
+            echo "::error::frontend/src/gen/ is out of sync with the backend OpenAPI spec."
+            echo "Run \`npm --prefix frontend run gen-api-types\` locally and commit the result."
+            exit 1
+          fi
+

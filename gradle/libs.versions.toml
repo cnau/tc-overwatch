@@ -13,6 +13,7 @@ mockk                   = "1.13.13"
 assertk                 = "0.28.1"
 detekt                  = "1.23.8"
 ktlintPlugin            = "12.1.2"
+springdocOpenapi        = "3.0.3"
 
 [libraries]
 # Spring Boot BOM (pulls in Spring web, security, data-jpa, actuator, etc. via dependency-management plugin)
@@ -23,6 +24,10 @@ springBoot-starter-data-jpa         = { module = "org.springframework.boot:sprin
 springBoot-starter-actuator         = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 springBoot-starter-validation       = { module = "org.springframework.boot:spring-boot-starter-validation" }
 springBoot-starter-test             = { module = "org.springframework.boot:spring-boot-starter-test" }
+
+# OpenAPI / Swagger UI — walks @RestControllers, Jackson + Bean Validation annotations,
+# Kotlin nullability. 3.x is the Spring Boot 4 / Spring Framework 7 line.
+springdoc-openapi-webmvc-ui         = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdocOpenapi" }
 
 # Persistence
 postgres-jdbc                       = { module = "org.postgresql:postgresql", version.ref = "postgresJdbc" }

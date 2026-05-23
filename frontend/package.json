@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "gen-api-types": "openapi-typescript http://localhost:8080/v3/api-docs -o src/gen/api.d.ts"
   },
   "dependencies": {
     "@mantine/core": "^9.2.1",
@@ -25,6 +26,7 @@
     "eslint": "^9.18.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.16",
+    "openapi-typescript": "^7.13.0",
     "postcss": "^8.5.15",
     "postcss-preset-mantine": "^1.18.0",
     "postcss-simple-vars": "^7.0.1",

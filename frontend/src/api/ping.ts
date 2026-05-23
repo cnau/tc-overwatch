@@ -1,16 +1,10 @@
 import { useMutation } from '@tanstack/react-query'
 
 import { requestJson } from '@/api/http'
+import type { components } from '@/gen/api'
 
-export type PingRequest = {
-  message: string
-}
-
-export type PingResponse = {
-  echo: string
-  serverReceivedAt: string
-  id: string
-}
+export type PingRequest = components['schemas']['PingRequest']
+export type PingResponse = components['schemas']['PingResponse']
 
 async function sendPing(req: PingRequest): Promise<PingResponse> {
   return requestJson<PingResponse>('/api/ping', {

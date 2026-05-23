@@ -29,6 +29,30 @@ Controller → Service → DAO → Repository → Database. Strategic detail in 
 
 - Error response body: `{ code: string, message: string, details?: object }`. Frontend reads `code` for branching, `message` for display.
 
+## OpenAPI spec
+
+The HTTP surface is documented by **springdoc-openapi** (`springdoc-openapi-starter-webmvc-ui`, 3.x line for Spring Boot 4). It walks every `@RestController`, picks up Jackson + Bean Validation annotations and Kotlin types automatically — no extra annotations on existing code. The spec is the FE/BE type contract.
+
+- `GET /v3/api-docs` — OpenAPI 3.1 JSON.
+- `GET /swagger-ui/index.html` — interactive UI.
+
+The frontend calls `npm run gen-api-types` to regenerate `frontend/src/gen/api.d.ts` from `/v3/api-docs`. CI's `api-type-drift` job boots the backend, regenerates, and diffs — drift fails the build. Keep the generated file committed.
+
+### What surfaces in the spec automatically
+
+- Field types (Kotlin nullable → optional, non-null on **request** fields → `required`).
+- Bean Validation constraints on request fields (`@NotBlank` → `required` + `minLength`, `@Size(max=N)` → `maxLength`, etc.).
+- Response field types + `format` hints (`UUID` → `format: uuid`).
+
+### Known gaps (don't fix preemptively)
+
+- **Response fields render as optional even when the Kotlin type is non-null.** springdoc 3.0.3 doesn't mark response fields as required for Kotlin non-null `val`s. The generated TS type is wider than reality. Pragmatic: live with it — the contract is still strong, just slightly loose at the seam. Add `@field:Schema(requiredMode = RequiredMode.REQUIRED)` only if a specific call site forces it.
+- **Field-level KDoc does NOT become OpenAPI `description`.** springdoc doesn't read KDoc. If a field genuinely needs prose for the spec consumer, use `@field:Schema(description = "...")`. v0 default: trust well-named fields, don't paper the spec with annotations.
+
+### Naming pinned by the existing § Naming table
+
+Each feature has one shape per layer. The schema names in `/v3/api-docs` mirror the Kotlin class simple name — `PingRequest`, `PingResponse`. Don't rename to `*ApiRequest` / `*ApiResponse`.
+
 ## Service
 
 - `FooService` class, `@Service`. No interface unless there are actually multiple impls.

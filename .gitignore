@@ -14,10 +14,12 @@ replay_pid*.log
 # ── Kotlin ────────────────────────────────────────────────────────────────
 .kotlin/
 
-# ── Generated code (kept gitignored ahead of OpenAPI codegen per issue #83) ──
+# ── Generated code ────────────────────────────────────────────────────────
 **/generated/
 **/generated-src/
-frontend/src/gen/
+# `frontend/src/gen/` uses a whitelist in frontend/.gitignore: api.d.ts is
+# committed (CI diffs it against a fresh regen), everything else stays
+# untracked. See docs/claude/react.md § API types.
 
 # ── Node / frontend (frontend/.gitignore also covers these inside the dir) ─
 node_modules/
