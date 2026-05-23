@@ -74,9 +74,12 @@ If a future service-to-service caller actually needs a typed RPC contract, revis
 
 ### Authentication / Security
 
-- **Spring Security** with OAuth2 client for Google sign-in.
-- Refresh tokens are encrypted at the application layer with a KEK (from Secret Manager on GCP / `.env` on Unraid) before persisting to Postgres.
-- Session = HTTP-only Secure SameSite=Lax cookie holding an opaque session token; backend validates server-side.
+- **Spring Security** (Spring Security 7, paired with Spring Boot 4) — current wiring is the JWT-cookie path; will gain Google OAuth2 client on top in a later PR.
+- **Session = HTTP-only `SameSite=Lax` cookie (`tco_session`)** carrying an HS256-signed JWT with `email`, optional `userId`, optional `tenantId`. Backend validates on every request via a filter that populates the `SecurityContext` with an `AuthenticatedPrincipal`. `Secure` flag is config-driven (false in local, true in unraid/prod).
+- **JWT signing secret** comes from config (`auth.jwt.secret`) — env var / Secret Manager in non-local profiles, hardcoded local-only value in `application-local.yml`. HS256 today; revisit RS256 + JWKS if cross-service token validation ever becomes a need.
+- **Stub login** (`POST /api/auth/dev-login`) is profile-gated to `local` — accepts any well-formed email and mints a JWT. Replaced by the real OAuth callback + invitation gate when those land.
+- **Refresh tokens** (Google's) will be encrypted at the application layer with a KEK (from Secret Manager on GCP / `.env` on Unraid) before persisting to Postgres. Not yet wired — the stub auth path has no refresh tokens to store.
+- **No CSRF tokens** in v0 — `SameSite=Lax` + the SPA's same-parent-domain layout is the defense. Revisit if a third-party form-post surface ever lands.
 
 ### Multi-tenancy in the request pipeline
 

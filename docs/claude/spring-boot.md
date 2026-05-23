@@ -14,6 +14,7 @@ Controller → Service → DAO → Repository → Database. Strategic detail in 
 - Request/response DTOs are Kotlin `data class`es co-located with the controller. Jackson handles (de)serialization automatically.
 - `@Valid` on the request DTO + Jakarta Bean Validation annotations (`@NotBlank`, `@Size`, `@Email`, etc.) on its fields. Shape validation only — no DB queries.
 - Convert request DTO → service DTO via the api-mapper extension, call service, convert response.
+- **Return the response DTO directly. Never wrap in `ResponseEntity<…>`.** Status code is declared explicitly via `@ResponseStatus(HttpStatus.X)` on the method — including `HttpStatus.OK` for success endpoints. Side effects on the response (cookies, custom headers) inject `HttpServletResponse` as a method parameter and call `response.addHeader(…)`. The status is visible at the method signature; the response shape is the DTO; no inline `ResponseEntity` plumbing.
 - Service exceptions propagate; `com.tcoverwatch.common.api.ApiErrorAdvice` maps each `DomainException` subclass (in `com.tcoverwatch.common.exception`) to a status code. Don't catch in the controller.
 
 | Exception | Status | `code` |
@@ -147,9 +148,20 @@ internal fun Foo.toDto(): FooDto =
 
 Three profiles only: `local`, `unraid`, `prod`. Profile selection drives DB connection / secret source / OAuth client ID. Secrets come from env vars / Secret Manager / `.env` — never checked in. Adding a fourth profile needs a real architectural reason.
 
+## Security
+
+Strategy + cookie/JWT shape pinned in `architecture.md` § Authentication / Security. Operational rules:
+
+- `com.tcoverwatch.common.security.SecurityConfig` owns the single `SecurityFilterChain`. `JwtAuthenticationFilter` reads the `tco_session` cookie, validates via `JwtService.verify`, and populates `SecurityContextHolder` with a `JwtAuthenticationToken` whose principal is `AuthenticatedPrincipal(email, userId?, tenantId?)`.
+- Controllers read the principal via `@AuthenticationPrincipal principal: AuthenticatedPrincipal?` — never reach into `SecurityContextHolder` directly.
+- 401 / 403 from the security filter chain delegates to Spring MVC's `HandlerExceptionResolver` (via `@Lazy`-injected bean), which routes through `ApiErrorAdvice` so the response shape matches every other error envelope. Don't duplicate JSON serialization in the security layer.
+- `/api/auth/*` is the auth surface. Production endpoints (`/api/auth/me`, `/api/auth/logout`) live in `AuthController`. The stub login (`/api/auth/dev-login`) lives in a separate `DevAuthController` annotated `@Profile("local")` so it doesn't exist as a bean outside local dev.
+- Profile-gated controllers go in their own file — never mix `@Profile("local")` and unconditional `@RestController` classes in the same file. Different lifetimes deserve different files.
+
 ## Anti-patterns
 
 - Returning entities from controllers or services.
+- Wrapping controller responses in `ResponseEntity` — return the DTO, use `@ResponseStatus` for the code and `HttpServletResponse` for header side effects.
 - Skipping a layer (controller → DAO, service → repository).
 - Manual `WHERE tenant_id = ?` filters — RLS does it.
 - Catching exceptions in the controller — let the advisor map them.

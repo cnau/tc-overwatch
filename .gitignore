@@ -25,6 +25,7 @@ replay_pid*.log
 node_modules/
 
 # ── IDE ───────────────────────────────────────────────────────────────────
+# .idea: user-specific IntelliJ state. Shared run configs live in .run/ (tracked).
 .idea/
 .vscode/
 .fleet/

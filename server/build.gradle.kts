@@ -38,6 +38,10 @@ dependencies {
     implementation(libs.springBoot.starter.data.jpa)
     implementation(libs.springBoot.starter.actuator)
     implementation(libs.springBoot.starter.validation)
+    implementation(libs.springBoot.starter.security)
+    // JWT encoder/decoder beans. Pulled in for the stub auth path; the same module
+    // covers Google OAuth resource-server validation when real OAuth lands.
+    implementation(libs.springBoot.starter.oauth2.resource.server)
 
     // OpenAPI 3 spec + Swagger UI. Auto-walks @RestControllers — no annotations required
     // on existing code. See docs/claude/spring-boot.md § OpenAPI for the field-doc convention.

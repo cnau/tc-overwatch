@@ -28,3 +28,10 @@ logging:
   level:
     org.hibernate.SQL: DEBUG
     org.hibernate.type.descriptor.sql: TRACE
+
+auth:
+  jwt:
+    # Local-dev only. HS256 needs ≥32 bytes; this string isn't a real secret.
+    secret: "tc-overwatch-local-dev-jwt-secret-do-not-use-in-prod"
+  cookie:
+    secure: false  # Secure=true would block the cookie over plain HTTP

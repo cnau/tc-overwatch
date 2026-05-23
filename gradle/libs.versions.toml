@@ -23,6 +23,7 @@ springBoot-starter-oauth2-client    = { module = "org.springframework.boot:sprin
 springBoot-starter-data-jpa         = { module = "org.springframework.boot:spring-boot-starter-data-jpa" }
 springBoot-starter-actuator         = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 springBoot-starter-validation       = { module = "org.springframework.boot:spring-boot-starter-validation" }
+springBoot-starter-oauth2-resource-server = { module = "org.springframework.boot:spring-boot-starter-oauth2-resource-server" }
 springBoot-starter-test             = { module = "org.springframework.boot:spring-boot-starter-test" }
 
 # OpenAPI / Swagger UI — walks @RestControllers, Jackson + Bean Validation annotations,
