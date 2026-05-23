@@ -136,10 +136,12 @@ Full proto definitions are TBD as implementation begins.
 **React + TypeScript + Vite**.
 
 - **State + data fetching**: TanStack Query on top of generated Connect-ES clients. The cache key is the RPC method + request; mutations invalidate relevant queries.
-- **UI primitives**: Tailwind CSS + shadcn/ui (or equivalent — open).
-- **Routing**: React Router.
-- **Forms**: react-hook-form (or alternative — open).
+- **UI primitives**: **Mantine v7+** — hooks-first, TypeScript-first component library. Ships finished DataTable-adjacent primitives, date pickers, modals, notifications, dropzone, etc. Theme + CSS variables; no required CSS-in-JS (Mantine v7 dropped emotion). Mantine's own form package (`@mantine/form`) is intentionally **not** used — see Forms below.
+- **Routing**: React Router v6+ with the Data Router (`createBrowserRouter`).
+- **Forms**: **react-hook-form + Zod** (via `@hookform/resolvers/zod`). Mantine inputs are wired via react-hook-form's `Controller`. Backend service-DTO shape is the source of truth; Zod schemas on the frontend mirror it for client-side validation.
 - The frontend never talks to Gmail or any external service directly; all data flows through the gRPC API.
+
+**Why Mantine over shadcn/ui or MUI** — solo developer, less React-fluent, small v0 surface, B2B SaaS (not a design-forward consumer product). Mantine ships finished components and stays as an npm dependency that can be `npm update`d, instead of either (a) requiring assembly of headless primitives (shadcn copies source into the repo — more code to own) or (b) imposing the Material aesthetic (MUI). Aesthetic is clean and doesn't read as Google/Material. If the SaaS grows past v0 and a custom design system becomes important, Mantine can be re-themed deeply before any migration is needed.
 
 ## Background jobs
 
@@ -524,8 +526,8 @@ These are implementation choices to make at code-writing time, not in this doc:
 - US-address parser library
 - Fuzzy-match library (string distance / token set ratio)
 - Phone normalization library (likely `libphonenumber` since it's industry standard)
-- React UI component library specifics (shadcn/ui, Mantine, others)
-- Form library specifics
+- Mantine sub-packages to pull in (`@mantine/dates`, `@mantine/notifications`, `@mantine/modals`, etc. land as features need them)
+- Whether to layer `mantine-react-table` (TanStack Table wrapper) for advanced data grids, or stick with Mantine's basic `Table` component — defer until a real grid requirement appears
 - Test framework choices (JUnit 5 + MockK + Testcontainers are the safe bets for backend; Vitest + React Testing Library for frontend)
 
 ## Watch items (Spring Boot 4 specifically)
