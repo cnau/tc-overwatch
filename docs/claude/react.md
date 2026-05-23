@@ -47,7 +47,7 @@ No global store (no Redux, Zustand, Jotai).
 ## Backend calls — `requestJson` + TanStack Query
 
 One file per backend domain in `src/api/`. Each file exports:
-- TypeScript request/response types matching the backend DTOs (kept aligned by review).
+- TypeScript request/response types **re-exported from `@/gen/api`** (auto-generated from the backend's OpenAPI spec — see below). Never define them locally.
 - TanStack Query hooks: noun-first for queries (`useFoo` / `useFoos` / `useFooById`), verb-first for mutations (`useCreateFoo` / `useUpdateFoo` / `useSendPing`).
 
 **The `requestJson` call is module-private — never exported.** Only the hooks are the public surface. A consumer that imports the raw fetch fn skips TanStack Query's cache, deduplication, retry policy, and the `ApiError` envelope parsing. Keeping it unexported makes that bypass structurally impossible.
@@ -59,9 +59,10 @@ All backend calls go through the shared `requestJson<T>` helper in `src/api/http
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { requestJson } from '@/api/http'
+import type { components } from '@/gen/api'
 
-export type Contact = { id: string; displayName: string; email: string | null; role: string }
-export type CreateContactRequest = { displayName: string; email?: string }
+export type Contact = components['schemas']['Contact']
+export type CreateContactRequest = components['schemas']['CreateContactRequest']
 
 async function fetchContacts(): Promise<Contact[]> {
   return requestJson<Contact[]>('/api/contacts')
@@ -88,6 +89,26 @@ export function useCreateContact() {
 **Error handling**: failed responses throw a typed `ApiError` carrying `code`, `message`, `status`, and optional `details`. UI code switches on `error.code` for branching (`if (err instanceof ApiError && err.code === 'CONFLICT') ...`) and renders `error.message` for display. Never parse the `message` text for branching — that's what `code` is for. Non-envelope failures (proxy errors, network) surface as `ApiError` with `code: 'HTTP_ERROR'`.
 
 **Inline error display**: use `<ApiErrorAlert error={query.error} />` (from `@/components/ApiErrorAlert`) to render a query/mutation failure inline. It surfaces `ApiError.code` when present and falls back to `.message` otherwise. Override the default title via the `title` prop (`<ApiErrorAlert error={...} title="Couldn't save contact" />`). For code-specific recovery hints, branch on `error.code` *outside* the alert and render siblings — don't bolt a slot onto this component.
+
+### API types — generated from the OpenAPI spec
+
+Frontend types come from `frontend/src/gen/api.d.ts`, generated from the backend's `/v3/api-docs` via [`openapi-typescript`](https://openapi-ts.dev/). Run `npm run gen-api-types` with the backend running locally to regenerate. The generated file is **committed**; CI fails on drift via the `api-type-drift` job (boots the stack, regenerates, diffs).
+
+Workflow when changing a backend DTO:
+
+1. Change the Kotlin DTO.
+2. With the backend running: `npm --prefix frontend run gen-api-types`.
+3. Frontend type errors at any call site flag what to fix.
+4. Commit backend change + regenerated `frontend/src/gen/api.d.ts` together.
+
+Don't hand-write types that have a backend counterpart. Per-domain api files re-export from `@/gen/api`:
+
+```ts
+import type { components } from '@/gen/api'
+export type Contact = components['schemas']['Contact']
+```
+
+Known wrinkle: response fields render as **optional** in the spec (springdoc gap with Kotlin non-null response types). Plan for `string | undefined` on response fields and use `?? defaultValue` / non-null assertions where the contract is clear. See `docs/claude/spring-boot.md` § OpenAPI for context.
 
 ## Components
 

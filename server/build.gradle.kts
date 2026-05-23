@@ -39,6 +39,10 @@ dependencies {
     implementation(libs.springBoot.starter.actuator)
     implementation(libs.springBoot.starter.validation)
 
+    // OpenAPI 3 spec + Swagger UI. Auto-walks @RestControllers — no annotations required
+    // on existing code. See docs/claude/spring-boot.md § OpenAPI for the field-doc convention.
+    implementation(libs.springdoc.openapi.webmvc.ui)
+
     // Persistence
     runtimeOnly(libs.postgres.jdbc)
     implementation(libs.liquibase.core)
