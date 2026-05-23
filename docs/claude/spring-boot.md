@@ -14,7 +14,19 @@ Controller → Service → DAO → Repository → Database. Strategic detail in 
 - Request/response DTOs are Kotlin `data class`es co-located with the controller. Jackson handles (de)serialization automatically.
 - `@Valid` on the request DTO + Jakarta Bean Validation annotations (`@NotBlank`, `@Size`, `@Email`, etc.) on its fields. Shape validation only — no DB queries.
 - Convert request DTO → service DTO via the api-mapper extension, call service, convert response.
-- Service exceptions propagate; a `@RestControllerAdvice` maps domain exceptions → HTTP status codes (`NotFoundException` → 404, `ValidationException` → 400, `PermissionDeniedException` → 403, `UnauthenticatedException` → 401). Don't catch in the controller.
+- Service exceptions propagate; `com.tcoverwatch.common.api.ApiErrorAdvice` maps each `DomainException` subclass (in `com.tcoverwatch.common.exception`) to a status code. Don't catch in the controller.
+
+| Exception | Status | `code` |
+|---|---|---|
+| `NotFoundException` | 404 | `NOT_FOUND` |
+| `ValidationException` | 400 | `VALIDATION_FAILED` |
+| `PermissionDeniedException` | 403 | `PERMISSION_DENIED` |
+| `UnauthenticatedException` | 401 | `UNAUTHENTICATED` |
+| `ConflictException` | 409 | `CONFLICT` |
+| `FailedPreconditionException` | 422 | `FAILED_PRECONDITION` |
+
+`@Valid` failures (Jakarta `MethodArgumentNotValidException`) route to the same 400 / `VALIDATION_FAILED` envelope with per-field `details.fieldErrors`. Unhandled exceptions → 500 / `INTERNAL_ERROR` with a generic message (no internal leakage); the advice logs them with stack traces.
+
 - Error response body: `{ code: string, message: string, details?: object }`. Frontend reads `code` for branching, `message` for display.
 
 ## Service
