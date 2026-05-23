@@ -1,4 +1,4 @@
-// :server — the Spring Boot application. gRPC + HTTP server, JPA persistence,
+// :server — the Spring Boot application. HTTP/JSON API (Spring MVC + Jackson), JPA persistence,
 // Liquibase migrations, Kotlin extension-function boundary mappers, feature-by-package layout.
 
 plugins {
@@ -33,24 +33,11 @@ springBoot {
 }
 
 dependencies {
-    // Generated proto stubs (Kotlin/Java gRPC types live here)
-    implementation(project(":proto"))
-
     // Spring Boot starters (versions managed by the BOM)
     implementation(libs.springBoot.starter.web)
     implementation(libs.springBoot.starter.data.jpa)
     implementation(libs.springBoot.starter.actuator)
     implementation(libs.springBoot.starter.validation)
-
-    // Spring-grpc (official Spring starter, replaces net.devh). The `server` starter speaks
-    // native gRPC over HTTP/2 (port 9090, grpcurl-compatible). The `server-web` starter speaks
-    // gRPC-Web over Spring MVC's HTTP/1.1 server (port 8080, browser-compatible). Same proto
-    // handlers serve both — exactly the architecture.md target.
-    implementation(platform(libs.springGrpc.dependencies.bom))
-    implementation(libs.springGrpc.server.starter)
-    implementation(libs.springGrpc.server.web.starter)
-    implementation(libs.grpc.services) // reflection, health checks
-    runtimeOnly(libs.grpc.netty.shaded)
 
     // Persistence
     runtimeOnly(libs.postgres.jdbc)

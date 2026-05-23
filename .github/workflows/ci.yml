@@ -56,14 +56,3 @@ jobs:
         run: npm run lint
         continue-on-error: true  # remove once clean
 
-  proto-lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Buf lint + breaking-change check
-        uses: bufbuild/buf-action@v1
-        with:
-          # Breaking-change detection is meaningful on PRs (against main); on push to main
-          # it's tautological. The action handles the distinction automatically.
-          push: false

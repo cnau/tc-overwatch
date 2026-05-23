@@ -14,7 +14,6 @@ plugins {
 rootProject.name = "tc-overwatch"
 
 include(
-    ":proto",
     ":server",
 )
 

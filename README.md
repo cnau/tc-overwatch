@@ -15,13 +15,11 @@ Automates the repetitive, time-consuming tasks that fill a real-estate transacti
 
 ```
 .
-├── proto/                          # Protobuf definitions + generated Kotlin/Java stubs
-│   └── src/main/proto/
 ├── server/                         # Spring Boot 4 + Kotlin backend
 │   ├── src/main/kotlin/com/tcoverwatch/
 │   │   ├── Application.kt
 │   │   └── feature/<name>/         # Feature-by-package layout
-│   │       ├── api/                # gRPC controllers + proto ↔ DTO mappers
+│   │       ├── api/                # @RestController + request/response DTOs + api mappers
 │   │       ├── service/            # Service classes + service DTOs
 │   │       └── persistence/        # DAO + Entity + Repository + entity mapper
 │   └── src/main/resources/
@@ -31,7 +29,6 @@ Automates the repetitive, time-consuming tasks that fill a real-estate transacti
 ├── deploy/helm/tc-overwatch-server/  # Helm chart for GKE
 ├── scripts/db-init/                # Local Postgres init (roles + extensions)
 ├── docker-compose.local.yml        # Local Postgres for development
-├── buf.yaml + buf.gen.yaml         # Proto linting + TS codegen for frontend
 └── .github/workflows/ci.yml        # Parallel build pipelines (server + frontend)
 ```
 
@@ -43,7 +40,7 @@ Requires **JDK 21+** (Spring Boot 4 minimum; the current scaffold pins to JDK 23
 # 1. Start local Postgres + role setup
 docker compose -f docker-compose.local.yml up -d
 
-# 2. Run the server (gRPC-Web + HTTP on :8080, single port via spring-grpc-server-web)
+# 2. Run the server (HTTP/JSON on :8080)
 ./gradlew :server:bootRun --args='--spring.profiles.active=local'
 
 # 3. In a separate terminal: run the frontend dev server
@@ -51,8 +48,8 @@ cd frontend && npm install && npm run dev
 # → http://localhost:5173
 ```
 
-The Vite dev server proxies `/rpc/*`, `/oauth/*`, and `/api/*` to `localhost:8080` so the browser sees same-origin during development — no CORS needed locally. spring-grpc-server-web bridges gRPC handlers to the Spring MVC servlet on the same port.
+The Vite dev server proxies `/api/*` and `/oauth/*` to `localhost:8080` so the browser sees same-origin during development — no CORS needed locally.
 
 ## Status
 
-The current state is a scaffold: layered Spring Boot + Kotlin app with one smoke-test feature (`PingService`) exercising the full proto → controller → service → DAO → repository → Postgres path. Real features land in subsequent branches.
+The current state is a scaffold: layered Spring Boot + Kotlin app with one smoke-test feature (`/api/ping`) exercising the full controller → service → DAO → repository → Postgres path. Real features land in subsequent branches.

@@ -2,25 +2,26 @@
 
 Operational guidance for the backend. Strategy lives in `architecture.md` § Backend (locked-in defaults, layered DTOs, Kotlin extension-function mappers, RLS, three Postgres roles, two-layer validation). This file = how to write code that respects those decisions.
 
-Stack: Spring Boot 4 + Kotlin 2.2 + JDK 21+, gRPC via Spring's official **`spring-grpc`** starter (gRPC-Web served from the Spring MVC servlet on :8080 — single port for both gRPC clients and browser Connect-Web), JPA/Hibernate, Liquibase (Groovy DSL — see `liquibase.md`), JUnit 5 + MockK + AssertK + Testcontainers.
+Stack: Spring Boot 4 + Kotlin 2.2 + JDK 21+, plain HTTP/JSON via Spring MVC `@RestController`s + Jackson, JPA/Hibernate, Liquibase (Groovy DSL — see `liquibase.md`), JUnit 5 + MockK + AssertK + Testcontainers.
 
 ## Layer boundaries
 
 Controller → Service → DAO → Repository → Database. Strategic detail in `architecture.md` § Layered architecture. Operational rule: a service or controller that imports an `*Entity` class is broken layering — entities never leave the DAO. (Kotlin `internal` can't enforce this with the current single-module layout; it's a review-time check.)
 
-## Controller (gRPC)
+## Controller (HTTP)
 
-- `*RpcController` per service, `@GrpcService`, constructor-injected service.
-- Convert proto → service DTO via the mapper extension, call service, convert response.
-- `@Valid` runs on the *converted service DTO*. Shape validation only — no DB queries.
-- Service exceptions propagate; a controller-side advisor maps domain exceptions → gRPC status codes. Don't catch in the controller.
-- HTTP endpoints (`/oauth/callback`, `/api/auth/*`, `/actuator/health`) use Spring MVC `@RestController` — see `architecture.md` § HTTP surface. They're the exception, not the rule.
+- `*HttpController` per feature, `@RestController`, `@RequestMapping("/api/<resource>")`, constructor-injected service.
+- Request/response DTOs are Kotlin `data class`es co-located with the controller. Jackson handles (de)serialization automatically.
+- `@Valid` on the request DTO + Jakarta Bean Validation annotations (`@NotBlank`, `@Size`, `@Email`, etc.) on its fields. Shape validation only — no DB queries.
+- Convert request DTO → service DTO via the api-mapper extension, call service, convert response.
+- Service exceptions propagate; a `@RestControllerAdvice` maps domain exceptions → HTTP status codes (`NotFoundException` → 404, `ValidationException` → 400, `PermissionDeniedException` → 403, `UnauthenticatedException` → 401). Don't catch in the controller.
+- Error response body: `{ code: string, message: string, details?: object }`. Frontend reads `code` for branching, `message` for display.
 
 ## Service
 
 - `FooService` class, `@Service`. No interface unless there are actually multiple impls.
 - `@Transactional` on write methods; `@Transactional(readOnly = true)` for multi-DAO reads.
-- Works in service DTOs only. Never imports entities or proto types. Never imports `api/.*Controller`.
+- Works in service DTOs only. Never imports entities or controller-layer DTOs. Never imports `api/.*Controller`.
 - Cross-feature work goes through the other feature's service, not directly to its DAO.
 - Business + DB-level validation (uniqueness, FK existence, invariants). Throws domain exceptions.
 
@@ -51,19 +52,15 @@ Strategy in `architecture.md` § Multi-tenancy. In code:
 
 ## Mappers — Kotlin extension functions
 
-Two boundary mappings exist: **proto ↔ service DTO** at the controller, and **entity ↔ service DTO** at the DAO. Both are written as top-level Kotlin extension functions co-located with the target type.
+Two boundary mappings exist: **api DTO ↔ service DTO** at the controller, and **entity ↔ service DTO** at the DAO. Both are written as top-level Kotlin extension functions co-located with the target type.
 
 ```kotlin
-// feature/foo/api/FooProtoMapper.kt
-internal fun FooRequest.toServiceRequest(now: Instant = Instant.now()): ServiceFooRequest =
+// feature/foo/api/FooHttpController.kt (or a sibling FooApiMapper.kt)
+internal fun FooApiRequest.toServiceRequest(now: Instant = Instant.now()): ServiceFooRequest =
     ServiceFooRequest(message = message, receivedAt = now)
 
-internal fun ServiceFooResponse.toProtoResponse(): FooResponse =
-    FooResponse.newBuilder()
-        .setId(id)
-        .setEcho(echo)
-        .setServerReceivedAt(receivedAt.toString())
-        .build()
+internal fun ServiceFooResponse.toResponse(): FooApiResponse =
+    FooApiResponse(echo = echo, serverReceivedAt = receivedAt.toString(), id = id)
 ```
 
 ```kotlin
@@ -79,10 +76,10 @@ internal fun FooEntity.toServiceResponse(): ServiceFooResponse =
     )
 ```
 
-- Naming: `Foo.toX()`. Files: `FooProtoMapper.kt` (api), `FooEntityMapper.kt` (persistence).
+- Naming: `Foo.toX()`. Files: api-side mappers can live in the controller file (small) or `FooApiMapper.kt`; persistence-side in `FooEntityMapper.kt`.
 - `internal` visibility — not Spring beans; called directly, no injected mapper field.
 - Audit fields (`tenantId`, `createdAt`, `updatedAt`) are populated by JPA lifecycle hooks (`@PrePersist`/`@PreUpdate` on a `BaseEntity`, or `AuditingEntityListener` once wired). The mapper never writes them.
-- For updates, take the ID as a separate service-method parameter, not from the proto.
+- For updates, take the ID as a separate service-method parameter (typically from `@PathVariable`), not from the request body.
 - `requireNotNull(entity.id) { "..." }` when mapping a saved entity — loud, not silent.
 - If a mapping balloons past ~50 fields, the *types* are wrong. Split.
 
@@ -104,5 +101,5 @@ Three profiles only: `local`, `unraid`, `prod`. Profile selection drives DB conn
 - Manual `WHERE tenant_id = ?` filters — RLS does it.
 - Catching exceptions in the controller — let the advisor map them.
 - MapStruct, ModelMapper, or any annotation-processor mapping framework (see Mappers).
-- Mixing proto types with service DTOs in service signatures.
+- Mixing api-layer DTOs with service DTOs in service signatures.
 - `Optional` in method parameters; `@Autowired` field injection.

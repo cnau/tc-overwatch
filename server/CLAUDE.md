@@ -9,8 +9,8 @@
 
 `:server` is the Spring Boot 4 + Kotlin backend. It owns:
 
-- The gRPC + Connect API surface (controllers in `feature/<name>/api/`).
-- The small HTTP surface for OAuth callback, auth endpoints, and actuator health (per `docs/architecture.md` § HTTP surface).
+- The HTTP/JSON API surface (Spring MVC `@RestController`s in `feature/<name>/api/`, at `/api/*`).
+- The OAuth callback, auth endpoints, and actuator health (per `docs/architecture.md` § HTTP surface).
 - Business logic in feature-scoped services (`feature/<name>/service/`).
 - JPA persistence with Liquibase-managed schema (`feature/<name>/persistence/`, `src/main/resources/db/changelog/`).
 - Background jobs via the Postgres-backed work queue (per `docs/architecture.md` § Background jobs — none implemented yet).
@@ -31,9 +31,9 @@ Local dev assumes Postgres is up via `docker compose -f docker-compose.local.yml
 
 ## Ports
 
-- **8080** — Spring MVC servlet. Serves both **gRPC-Web** (the main API, at `/com.tcoverwatch.<feature>.v<N>.<Service>/<Method>`) and the small HTTP surface (OAuth callback, `/api/auth/*`, `/actuator/health`). Single port, single process — spring-grpc-server-web bridges gRPC handlers to the servlet via `grpc-servlet-jakarta`.
+- **8080** — Spring MVC. Serves `/api/*` (JSON API), `/oauth/*` (OAuth callback), `/actuator/*` (health probes).
 
-The Vite dev server proxies `/rpc/*` → backend `/` and `/oauth/*` + `/api/*` → `/`, so the browser sees same-origin during local dev. `grpcurl -plaintext localhost:8080 ...` also works against the same endpoint via h2c.
+The Vite dev server proxies `/api/*` and `/oauth/*` to `localhost:8080`, so the browser sees same-origin during local dev. CLI testing: `curl -X POST -H 'Content-Type: application/json' -d '{...}' http://localhost:8080/api/<path>`.
 
 ## Spring profiles
 

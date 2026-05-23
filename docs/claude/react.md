@@ -4,7 +4,7 @@ Operational guidance for the React/TypeScript frontend. Stack pinned in `archite
 
 Installed (scaffold): React 19, TypeScript 5.7, Vite 6, ESLint 9 flat config.
 
-Pinned, install per-feature: Connect-ES + **Connect-Query** (primary path; auto-generates query/mutation hooks per RPC), TanStack Query v5+, Mantine v8+ (`@mantine/core` + `@mantine/hooks`; sub-packages per-feature), React Router v6.4+ Data Router, react-hook-form + Zod (`@hookform/resolvers/zod`), Vitest + RTL + user-event + MSW or `createRouterTransport` for transport-level mocking.
+Pinned, install per-feature: **TanStack Query v5+** with hand-written typed `fetch` wrappers (no codegen, no proto), Mantine v8+ (`@mantine/core` + `@mantine/hooks`; sub-packages per-feature), React Router v6.4+ Data Router, react-hook-form + Zod (`@hookform/resolvers/zod`), Vitest + RTL + user-event + MSW for HTTP mocking in tests.
 
 ## TypeScript
 
@@ -22,8 +22,7 @@ TypeScript only. No JS in `src/`. Strict mode stays on.
 
 ```
 frontend/src/
-├── gen/           # Buf-generated Connect-ES clients (don't edit)
-├── api/           # Hand-written wrappers around generated clients (TanStack Query hooks)
+├── api/           # One file per backend domain: types + fetch fn + TanStack Query hooks
 ├── pages/         # Top-level route components
 ├── components/    # Reusable UI, organized by domain or kind
 ├── hooks/         # Custom hooks
@@ -38,28 +37,61 @@ The scaffold currently ships with only `App.tsx` + `main.tsx`. Build out the tre
 
 Four buckets, pick the right one:
 
-1. **Server state → Connect-Query / TanStack Query.** Anything from the backend. The hook *is* the state — don't shadow it in `useState`.
+1. **Server state → TanStack Query.** Anything from the backend. The hook *is* the state — don't shadow it in `useState`.
 2. **URL state → `useSearchParams` / route params.** Filters, tabs, selected row id, pagination, open drawer. Linkable, refresh-safe, decouples siblings.
 3. **Local component state → `useState` / `useReducer`.** Form drafts, hover, transient UI flags. Use `useReducer` when 3+ related values change together (wizards, multi-flag form state — model as a sealed-state reducer).
-4. **Cross-tree shared → React Context.** Auth user, theme, transport. Not for short-distance prop drilling.
+4. **Cross-tree shared → React Context.** Auth user, theme. Not for short-distance prop drilling.
 
 No global store (no Redux, Zustand, Jotai).
 
-## Connect-Query
+## Backend calls — `fetch` + TanStack Query
 
-Primary backend-call path: import the generated `useQuery` / `useMutation` from `@/gen/.../<service>-<Service>_connectquery` and pass the generated RPC reference + params. Cache keys are managed automatically; invalidate via `<rpc>.getQueryKey()`.
+One file per backend domain in `src/api/`. Each file exports:
+- TypeScript request/response types matching the backend DTOs (kept aligned by review).
+- A typed `fetch` function that POSTs / GETs the endpoint, sets `credentials: 'include'`, throws on non-2xx.
+- TanStack Query hooks (`useFooQuery` / `useFooMutation`) wrapping that function with query keys.
+
+Components never call `fetch` directly — always go through `src/api/<domain>.ts`. Mutations invalidate relevant queries by query key on success.
 
 ```ts
-const { data, isPending, error } = useQuery(list, { /* params */ })
+// src/api/contacts.ts
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
-const labelEmail = useMutation(label, {
-  onSuccess: () => queryClient.invalidateQueries({ queryKey: list.getQueryKey() }),
-})
+export type Contact = { id: string; displayName: string; email: string | null; role: string }
+export type CreateContactRequest = { displayName: string; email?: string }
+
+async function fetchContacts(): Promise<Contact[]> {
+  const r = await fetch('/api/contacts', { credentials: 'include' })
+  if (!r.ok) throw new Error(`Failed to list contacts: ${r.status}`)
+  return r.json()
+}
+async function createContact(req: CreateContactRequest): Promise<Contact> {
+  const r = await fetch('/api/contacts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(req),
+  })
+  if (!r.ok) throw new Error(`Failed to create contact: ${r.status}`)
+  return r.json()
+}
+
+export const contactKeys = { all: ['contacts'] as const, list: () => [...contactKeys.all, 'list'] as const }
+
+export const useContacts = () => useQuery({ queryKey: contactKeys.list(), queryFn: fetchContacts })
+
+export function useCreateContact() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: createContact,
+    onSuccess: () => qc.invalidateQueries({ queryKey: contactKeys.all }),
+  })
+}
 ```
 
-App wraps in `<TransportProvider transport={transport}><QueryClientProvider client={queryClient}>...</...>...</...>`. Transport: **`createGrpcWebTransport({ baseUrl: '/rpc', credentials: 'include' })`** — the backend (`spring-grpc-server-web`) speaks gRPC-Web, not native Connect protocol, so use the gRPC-Web transport factory. `credentials: 'include'` attaches the session cookie (cross-origin in prod, see `architecture.md` § CORS). Vite proxy maps `/rpc/*` → backend `:8080` in dev.
+`credentials: 'include'` is non-negotiable — the session cookie rides on every call. Cross-origin in prod relies on a shared parent domain (see `architecture.md` § CORS). In dev, the Vite proxy makes `/api/*` same-origin so the flag is a no-op but stays for prod consistency.
 
-**Manual fallback**: only when Connect-Query can't express the case (streaming, custom cache shapes). Wrap `createPromiseClient` in a `useFoo` hook in `src/api/<domain>.ts`. Components never call generated clients directly.
+**Error mapping**: read the JSON error shape (`{ code, message }`) from the response and surface it. Don't parse error `message` for branching — switch on `code`.
 
 ## Components
 
@@ -135,7 +167,7 @@ Setup per Mantine's guide: `@mantine/core` + `@mantine/hooks`, import `@mantine/
 
 - Extract a custom hook when stateful logic repeats across 2+ components or a component has too many `useEffect` blocks to follow.
 - Check `@mantine/hooks` first — `useDebouncedValue`, `useDisclosure`, `useClickOutside`, `useElementSize`, `useLocalStorage`, `useMediaQuery`, and others are already there.
-- Naming: `useXxx` for accessors, `useXxxMutation` for mutations (matches Connect-Query).
+- Naming: `useXxx` for accessor / query hooks, `useXxxMutation` for mutations.
 - Stable return shape per hook (tuple or object, not mixed).
 - > 2-3 `useEffect`s in one component is a smell — usually means state belongs in TanStack Query / route loaders / event handlers, not effects.
 
@@ -159,7 +191,7 @@ Mantine has solid defaults; don't undermine them.
 
 - Test files co-located: `Foo.tsx` → `Foo.test.tsx`.
 - Test behavior, not implementation. Render, interact via `userEvent`, assert via `getByRole` / `getByLabelText`. `getByTestId` is last resort.
-- **Mock at the transport boundary.** Either MSW (HTTP interception, good for realistic network behavior) or `createRouterTransport` from `@connectrpc/connect` (typed handlers, faster for unit tests). **Never `vi.mock` generated Connect-Query hooks** — it bypasses the contract.
+- **Mock at the network boundary with MSW.** Intercept `/api/*` requests and return canned responses. Never `vi.mock` your `useXxx` query hooks — that bypasses the contract (the hook is part of what you're testing).
 - Build a `renderWithProviders` helper that wraps in `TransportProvider` + `QueryClientProvider`.
 - Don't test trivial render-only components or generated code. Snapshot tests are a smell for anything that changes often.
 
@@ -172,13 +204,13 @@ Mantine has solid defaults; don't undermine them.
 
 ## Anti-patterns
 
-- Fetching in `useEffect` when a Connect-Query hook works.
+- Fetching in `useEffect` when a TanStack Query hook works.
 - Server state in Context or `useState`.
-- Components calling generated Connect clients directly — go through `src/api/`.
+- Components calling `fetch` directly — go through `src/api/<domain>.ts`.
 - Raw `fetch` / `axios` to the backend.
 - `any` / `@ts-nocheck` / `@ts-ignore` / `React.FC`.
 - New state libraries (Redux, Zustand, Jotai).
-- `vi.mock` on Connect-Query hooks (mock the transport).
+- `vi.mock` on query/mutation hooks (use MSW to mock the network instead).
 - Mixing Mantine with Tailwind / styled-components / emotion / Sass.
 - `@mantine/form` (use react-hook-form).
 - Re-implementing a Mantine primitive that's themable.

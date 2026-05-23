@@ -1,6 +1,6 @@
 apiVersion: v2
 name: tc-overwatch-server
-description: tc-overwatch backend (Spring Boot, gRPC + HTTP, JPA on Cloud SQL Postgres)
+description: tc-overwatch backend (Spring Boot, HTTP/JSON, JPA on Cloud SQL Postgres)
 type: application
 version: 0.0.1
 appVersion: "0.0.1"

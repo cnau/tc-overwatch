@@ -4,11 +4,6 @@
 kotlin                  = "2.2.0"
 springBoot              = "4.0.6"
 springDepMgmt           = "1.1.7"
-springGrpc              = "1.0.3"            # Spring's official gRPC starter (replaces net.devh)
-grpcJava                = "1.74.0"
-grpcKotlin              = "1.4.3"
-protobuf                = "4.32.0"
-protobufPlugin          = "0.9.5"
 liquibase               = "4.32.0"
 liquibaseGroovyDsl      = "4.0.0"
 postgresJdbc            = "42.7.7"
@@ -28,19 +23,6 @@ springBoot-starter-data-jpa         = { module = "org.springframework.boot:sprin
 springBoot-starter-actuator         = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 springBoot-starter-validation       = { module = "org.springframework.boot:spring-boot-starter-validation" }
 springBoot-starter-test             = { module = "org.springframework.boot:spring-boot-starter-test" }
-
-# gRPC — Spring's official starter speaks both native gRPC (HTTP/2) and gRPC-Web (HTTP/1.1) from the same handlers
-springGrpc-dependencies-bom         = { module = "org.springframework.grpc:spring-grpc-dependencies", version.ref = "springGrpc" }
-springGrpc-server-starter           = { module = "org.springframework.grpc:spring-grpc-server-spring-boot-starter" }
-springGrpc-server-web-starter       = { module = "org.springframework.grpc:spring-grpc-server-web-spring-boot-starter" }
-grpc-protobuf                       = { module = "io.grpc:grpc-protobuf", version.ref = "grpcJava" }
-grpc-stub                           = { module = "io.grpc:grpc-stub", version.ref = "grpcJava" }
-grpc-services                       = { module = "io.grpc:grpc-services", version.ref = "grpcJava" }
-grpc-netty-shaded                   = { module = "io.grpc:grpc-netty-shaded", version.ref = "grpcJava" }
-grpc-kotlin-stub                    = { module = "io.grpc:grpc-kotlin-stub", version.ref = "grpcKotlin" }
-protobuf-kotlin                     = { module = "com.google.protobuf:protobuf-kotlin", version.ref = "protobuf" }
-protobuf-java                       = { module = "com.google.protobuf:protobuf-java", version.ref = "protobuf" }
-javax-annotation-api                = { module = "javax.annotation:javax.annotation-api", version = "1.3.2" }
 
 # Persistence
 postgres-jdbc                       = { module = "org.postgresql:postgresql", version.ref = "postgresJdbc" }
@@ -69,6 +51,5 @@ kotlin-spring                       = { id = "org.jetbrains.kotlin.plugin.spring
 kotlin-jpa                          = { id = "org.jetbrains.kotlin.plugin.jpa", version.ref = "kotlin" }
 springBoot                          = { id = "org.springframework.boot", version.ref = "springBoot" }
 springDepMgmt                       = { id = "io.spring.dependency-management", version.ref = "springDepMgmt" }
-protobuf                            = { id = "com.google.protobuf", version.ref = "protobufPlugin" }
 detekt                              = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 ktlint                              = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlintPlugin" }
