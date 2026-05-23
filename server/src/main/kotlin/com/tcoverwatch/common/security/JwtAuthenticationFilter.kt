@@ -21,9 +21,7 @@ class JwtAuthenticationFilter(
         val token = request.cookies?.firstOrNull { it.name == SESSION_COOKIE_NAME }?.value
         if (token != null) {
             jwtService.verify(token)?.let { jwt ->
-                // email is the one always-present claim (see JwtService.mint). A missing
-                // value means a corrupted / future-incompatible token — treat as anonymous
-                // rather than NPE'ing on the non-null principal field.
+                // Missing email = corrupted/incompatible token. Treat as anonymous, don't NPE the principal.
                 val email = jwt.getClaim<String?>("email")
                 if (email != null) {
                     val principal =

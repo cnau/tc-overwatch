@@ -16,10 +16,8 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
-// Profile-gated local-only stub: mints a JWT for any email a developer types,
-// no invitation check, no Google. Wholly replaced by the real OAuth callback +
-// invitation gate in PR 3 of #18. NEVER reachable on unraid / prod — the
-// `@Profile("local")` annotation excludes the bean entirely from other profiles.
+// Dev-only stub — mints a JWT for any well-formed email, no invitation check.
+// @Profile("local") excludes the bean from every other profile.
 @RestController
 @RequestMapping("/api/auth", produces = [MediaType.APPLICATION_JSON_VALUE])
 @Profile("local")

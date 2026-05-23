@@ -7,9 +7,6 @@ import java.time.Duration
 
 const val SESSION_COOKIE_NAME = "tco_session"
 
-// Centralizes the cookie attributes so login / logout / future refresh flows
-// can't drift. `secure` is config-driven — false in local (over plain HTTP),
-// true in unraid / prod (over HTTPS at the Cloudflare edge).
 @Component
 class AuthCookie(
     @Value("\${auth.cookie.secure}") private val secure: Boolean,

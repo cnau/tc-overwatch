@@ -10,8 +10,7 @@ const authKeys = {
   me: ['auth', 'me'] as const,
 }
 
-// 401 from /api/auth/me is the expected "not signed in" signal — surface it as
-// `null` data instead of letting it propagate as a query error.
+// 401 → null data, not error. Signed-out is expected, not exceptional.
 async function fetchMe(): Promise<MeResponse | null> {
   try {
     return await requestJson<MeResponse>('/api/auth/me')

@@ -31,9 +31,7 @@ logging:
 
 auth:
   jwt:
-    # HS256 needs ≥32 bytes. This string is local-dev-only — replace via env in any
-    # non-local profile. NOT a secret in any meaningful sense.
+    # Local-dev only. HS256 needs ≥32 bytes; this string isn't a real secret.
     secret: "tc-overwatch-local-dev-jwt-secret-do-not-use-in-prod"
   cookie:
-    # Plain HTTP on localhost; HTTPS-only flag would block the cookie.
-    secure: false
+    secure: false  # Secure=true would block the cookie over plain HTTP

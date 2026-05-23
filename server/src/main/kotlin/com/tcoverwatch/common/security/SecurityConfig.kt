@@ -19,15 +19,12 @@ class SecurityConfig {
     fun securityFilterChain(
         http: HttpSecurity,
         jwtAuthFilter: JwtAuthenticationFilter,
-        // Delegate 401/403 from the security filter chain to Spring MVC's exception
-        // resolver, which routes through our @RestControllerAdvice. Same envelope
-        // shape regardless of whether the failure came from a controller or the
-        // security layer. @Lazy avoids the early-binding chicken-and-egg.
+        // Routes 401/403 through ApiErrorAdvice so the envelope matches the controller path.
+        // @Lazy dodges the early-binding chicken-and-egg.
         @Qualifier("handlerExceptionResolver") @Lazy exceptionResolver: HandlerExceptionResolver,
     ): SecurityFilterChain {
         http
-            // SPA + cookie auth on a same-parent-domain layout; SameSite=Lax + Origin
-            // checks are the defense. Revisit if a third-party form-post surface ever lands.
+            // SameSite=Lax + same-parent-domain layout is the defense.
             .csrf(AbstractHttpConfigurer<*, *>::disable)
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests {

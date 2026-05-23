@@ -32,9 +32,7 @@ class JwtService(
         val claims =
             JwtClaimsSet
                 .builder()
-                // `sub` always holds email — the one identity attribute present on every
-                // token, whether the user record exists yet (post-invitation-acceptance)
-                // or not (stub-auth path). `userId` / `tenantId` are separate claims.
+                // `sub` is email, not userId — email is the one claim present on every token.
                 .subject(email)
                 .claim("email", email)
                 .apply {

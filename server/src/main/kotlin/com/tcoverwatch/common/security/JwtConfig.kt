@@ -16,10 +16,6 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder
 import javax.crypto.spec.SecretKeySpec
 
-// HS256 symmetric signing. Secret comes from config (auth.jwt.secret).
-// Prod sets it via env var / Secret Manager; local has a hardcoded value in
-// application-local.yml. The encoder + decoder beans are also what real OAuth
-// (Google) would consume, so this wiring is reusable.
 @Configuration
 class JwtConfig {
     @Bean
