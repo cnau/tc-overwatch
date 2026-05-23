@@ -16,7 +16,7 @@ Migrations run as the `tco_migrate` role. Production: one-shot `migrate` contain
 ## Tenant-scoped table template
 
 ```groovy
-changeSet(id: 'NNN-create-foo', author: 'tco') {
+changeSet(id: 'NNN-create-foo', author: 'Christian Nau') {
     comment 'Foo — tenant-scoped, RLS-protected.'
 
     createTable(tableName: 'foo') {

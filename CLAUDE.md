@@ -13,7 +13,7 @@ Lead each response with `[personal:tc-overwatch]` so Christian can tell at a gla
 - `docs/task-inventory.md` — full task map with `[FOCUS]` / `[REVIEW]` / `[BACKLOG]` flags.
 - `docs/glossary.md` — project vocabulary (TC, transaction key, primary vs. cooperating agent, triage labels, hot/cold storage). Use these terms; don't invent alternates.
 - `docs/claude/` — shared coding conventions, imported by module-level `CLAUDE.md` files.
-- Module-level `CLAUDE.md` (`proto/`, `server/`, `frontend/`) — module overview, commands, module-specific tech.
+- Module-level `CLAUDE.md` (`server/`, `frontend/`) — module overview, commands, module-specific tech.
 
 ## Greenfield
 

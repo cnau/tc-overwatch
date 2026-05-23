@@ -26,7 +26,7 @@ Run from the repo root with `npm --prefix frontend run <script>` when chaining w
 - **Vite proxy** in `vite.config.ts` forwards `/api/*` and `/oauth/*` to backend `localhost:8080`. Same-origin in the browser during dev — no CORS needed locally. Production uses cross-origin cookies under a shared parent domain; see `docs/architecture.md` § CORS.
 - **Stack pinned in `docs/architecture.md` § Frontend** — the full pinned set: **TanStack Query v5+, Mantine v8+ (core + hooks; sub-packages per-feature), React Router v6.4+ with the Data Router, react-hook-form + Zod, Vitest + React Testing Library + MSW for HTTP mocking**. Install per-feature, not preemptively. Pin versions in `package.json` and update this file when you add one. See `docs/claude/react.md` for the patterns to follow.
 - **Path alias** `@/*` → `src/*` is wired (`tsconfig.app.json` `paths` + `vite.config.ts` `resolve.alias` + `@types/node`). Use it for everything imported from `src/`.
-- **ESLint flat config** lives in `eslint.config.js`. The CI lint step currently uses `continue-on-error: true` (per architecture scaffold notes) — remove that flag after the first clean lint pass.
+- **ESLint flat config** lives in `eslint.config.js`. Lint failures break CI (the scaffold-era `continue-on-error: true` flag was removed once the first clean pass landed).
 - **No CRA, no Webpack config files.** Vite handles bundling; don't introduce a custom webpack config or eject anything.
 
 ## What lives in this module vs. backend

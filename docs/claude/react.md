@@ -31,7 +31,7 @@ frontend/src/
 └── theme/         # Mantine theme object; CSS module globals
 ```
 
-The scaffold currently ships with only `App.tsx` + `main.tsx`. Build out the tree as features land, not preemptively.
+The scaffold currently has `App.tsx`, `main.tsx`, `api/QueryProvider.tsx`, `api/ping.ts`, `theme/index.ts`, and `vite-env.d.ts`. Build out the rest of the tree as features land, not preemptively.
 
 ## State management
 
@@ -48,8 +48,9 @@ No global store (no Redux, Zustand, Jotai).
 
 One file per backend domain in `src/api/`. Each file exports:
 - TypeScript request/response types matching the backend DTOs (kept aligned by review).
-- A typed `fetch` function that POSTs / GETs the endpoint, sets `credentials: 'include'`, throws on non-2xx.
-- TanStack Query hooks (`useFooQuery` / `useFooMutation`) wrapping that function with query keys.
+- TanStack Query hooks: noun-first for queries (`useFoo` / `useFoos` / `useFooById`), verb-first for mutations (`useCreateFoo` / `useUpdateFoo` / `useSendPing`).
+
+**The `fetch` function is module-private — never exported.** Only the hooks are the public surface. A consumer that imports the raw fetch fn skips TanStack Query's cache, deduplication, retry policy, and (when #82 lands) the ApiError envelope parsing. Keeping the fetch fn unexported makes that bypass structurally impossible.
 
 Components never call `fetch` directly — always go through `src/api/<domain>.ts`. Mutations invalidate relevant queries by query key on success.
 
@@ -149,10 +150,13 @@ function AppButton({ variant = 'primary', ...rest }: AppButtonProps) {
 
 Setup per Mantine's guide: `@mantine/core` + `@mantine/hooks`, import `@mantine/core/styles.css`, wrap in `<MantineProvider theme={theme}>`, add `postcss-preset-mantine` to `postcss.config.cjs`. Theme lives in `src/theme/`.
 
+**Provider stack ordering** (outer to inner): `StrictMode → MantineProvider → QueryClientProvider → App`. UI providers (theme, color scheme) outside data providers (query cache, router). Convention, not correctness — Mantine and TanStack Query don't consume each other's context, so swapping them works at runtime. The order is for reader clarity: "visual context cascades, then data plumbing cascades, then components consume both."
+
 - **Components first** — Mantine covers Button/TextInput/Select/Modal/Drawer/Notification/etc. Reach for these before writing custom.
 - **Layout primitives** (`Stack`, `Group`, `Flex`, `Grid`, `SimpleGrid`, `Container`) — use them over raw `<div>` when they express the intent.
 - **`style` prop** for one-off tweaks; **CSS Modules** (`Foo.module.css`, co-located) for anything reusable.
 - **`rem` units**, theme tokens — never hardcode colors / spacing / font sizes.
+- **Lift to the theme on the third use.** A value (color, radius, spacing override, component default) that appears in 3+ components is no longer ad-hoc — promote it to `src/theme/index.ts` and reference the token. One-off and two-off usages stay inline; the third is the signal to centralize.
 - **No additional styling systems.** No Tailwind, styled-components, emotion, Sass.
 
 ## Forms
@@ -195,14 +199,14 @@ Mantine has solid defaults; don't undermine them.
 - Test files co-located: `Foo.tsx` → `Foo.test.tsx`.
 - Test behavior, not implementation. Render, interact via `userEvent`, assert via `getByRole` / `getByLabelText`. `getByTestId` is last resort.
 - **Mock at the network boundary with MSW.** Intercept `/api/*` requests and return canned responses. Never `vi.mock` your `useXxx` query hooks — that bypasses the contract (the hook is part of what you're testing).
-- Build a `renderWithProviders` helper that wraps in `TransportProvider` + `QueryClientProvider`.
+- Build a `renderWithProviders` helper that wraps in `MantineProvider` + `QueryClientProvider` (matching the provider stack in `main.tsx`).
 - Don't test trivial render-only components or generated code. Snapshot tests are a smell for anything that changes often.
 
 ## Conventions
 
 - Files: `PascalCase.tsx` for components (default export), `useXxx.ts` for hooks, `XxxPage.tsx` for pages, `src/api/<domain>.ts` for API wrappers.
 - Constants: `SCREAMING_SNAKE_CASE`.
-- Path alias `@/*` → `src/*` is the *target* but not yet wired (needs `tsconfig.app.json` paths + `vite.config.ts` `resolve.alias` + `@types/node`). Until then, relative imports are fine in the small scaffold tree.
+- Path alias `@/*` → `src/*` is wired (`tsconfig.app.json` paths + `vite.config.ts` resolve.alias + `@types/node`). Use it for everything imported from `src/`; reserve relative imports for siblings in the same directory.
 - Env vars prefixed `VITE_*`; ship in the bundle so never put real secrets there.
 
 ## Anti-patterns

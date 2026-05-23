@@ -43,26 +43,28 @@ Rationale: the wire format, the business model, and the persistence model evolve
 
 ### Kotlin extension-function mappers at boundaries
 
-Two boundary mappings exist: proto ↔ service DTO at the controller, and entity ↔ service DTO at the DAO. Both are implemented as **top-level Kotlin extension functions** co-located with the target type:
+Two boundary mappings exist: **request/response ↔ DTO** at the controller, and **entity ↔ DTO** at the DAO. Both are implemented as **top-level Kotlin extension functions** co-located with the target type. Three canonical function names used across every feature: `toDto`, `toEntity`, `toResponse`.
 
 ```kotlin
-// feature/foo/api/FooProtoMapper.kt
-internal fun FooRequest.toServiceRequest(): ServiceFooRequest = ServiceFooRequest(...)
-internal fun ServiceFooResponse.toProtoResponse(): FooResponse = FooResponse.newBuilder()...build()
+// feature/foo/api/FooController.kt (or a sibling FooApiMapper.kt for larger features)
+internal fun FooRequest.toDto(): FooDto = FooDto(...)
+internal fun FooDto.toResponse(): FooResponse = FooResponse(...)
 
 // feature/foo/persistence/FooEntityMapper.kt
-internal fun ServiceFooRequest.toEntity(): FooEntity = FooEntity(...)
-internal fun FooEntity.toServiceResponse(): ServiceFooResponse = ServiceFooResponse(...)
+internal fun FooDto.toEntity(): Foo = Foo(...)
+internal fun Foo.toDto(): FooDto = FooDto(...)
 ```
 
 Why extension functions, explicitly **not MapStruct**:
 
 - Kotlin already has the language features MapStruct compensates for in Java — named arguments, data-class `copy()`, immutable constructors, null safety in the type system.
-- No `kapt` annotation processor in the build → faster incremental compiles, no generated-source surprise, no "Unmapped target properties" warnings on proto builders, no `@Mapping(expression = "java(...)")` escape hatches.
+- No `kapt` annotation processor in the build → faster incremental compiles, no generated-source surprise, no `@Mapping(expression = "java(...)")` escape hatches.
 - The mapping is *the code* — readable in the diff, debuggable like any function, trivially testable without `Mappers.getMapper(...)` boilerplate.
-- Extension functions don't need to be Spring beans → the DAO and controller don't carry a mapper field; they just call `dto.toEntity()` / `request.toServiceRequest()`.
+- Extension functions don't need to be Spring beans → the DAO and controller don't carry a mapper field; they just call `dto.toEntity()` / `request.toDto()`.
 
 Discipline: if a mapping is genuinely tedious (50+ fields, multi-source enrichment), it's signalling that the *types* are wrong, not that you need MapStruct — split the DTO or simplify the mapping target.
+
+The naming convention is pinned in `docs/claude/spring-boot.md` § Naming + § Mappers.
 
 ### HTTP API surface
 
@@ -189,8 +191,8 @@ docker compose up -d postgres        # Postgres 18 container, bound to localhost
 cd frontend && npm run dev           # Vite dev server on :5173
 ```
 
-- A separate Google Cloud OAuth client is used for local dev with `http://localhost:5173/oauth/callback` as an authorized redirect URI. Credentials in `application-local.yaml` (gitignored) or `.env.local`.
-- `docker-compose.yml` includes Postgres and optionally pgAdmin/Adminer for DB browsing.
+- A separate Google Cloud OAuth client is used for local dev with `http://localhost:5173/oauth/callback` as an authorized redirect URI. The OAuth client *secret* never lives in `application-local.yml` (which is checked in) — it lives in `.env.local` (gitignored) or in an OS keyring that the local profile picks up via env vars.
+- `docker-compose.local.yml` includes Postgres (and the role-init script under `scripts/db-init/`).
 - Background jobs run in-process during local dev (no separate worker container).
 
 ## Deployment
@@ -200,7 +202,7 @@ cd frontend && npm run dev           # Vite dev server on :5173
 Helm chart structure:
 
 ```
-deploy/helm/tc-overwatch/
+deploy/helm/tc-overwatch-server/
 ├── Chart.yaml
 ├── values.yaml              # defaults
 ├── values-staging.yaml
@@ -316,7 +318,7 @@ On push to main:
    └──────────┘  └──────────┘      └──────────┘  └──────────┘
 ```
 
-Frontend and backend deploys are independent. Either can ship without the other. The contract between them is the proto schema (Buf catches breaking changes in CI before a bad proto change can deploy).
+Frontend and backend deploys are independent. Either can ship without the other. The contract between them is the JSON shape of the HTTP API — kept aligned by review today, and slated to be enforced by OpenAPI codegen + CI drift check per issue #83.
 
 ### Unraid deploy: self-hosted runner
 
@@ -564,5 +566,5 @@ Mitigation: pin to specific Spring Boot 4–compatible versions where they exist
 Things discovered while building the initial scaffold that are worth remembering:
 
 - **JDK toolchain**: the `org.gradle.toolchains.foojay-resolver-convention` plugin at version `0.10.0` has a known bug with Gradle 9.5.1 (throws `"IBM_SEMERU"` when attempting auto-download). Workaround used: rely on a locally-installed JDK (Java 23 on the dev machine) by setting the toolchain to `JavaLanguageVersion.of(23)` in both module build files. Revisit when foojay ships a fix or when JDK 21 is installed locally for stricter version alignment.
-- **Kotlin `internal` visibility on persistence classes**: cannot mark `PingEntity` / `PingRepository` as `internal` because the public `PingDao` (called from the service layer) takes them as constructor parameters — a public function cannot expose an internal type. The "entities don't leak from DAOs" architectural principle is therefore **enforced by code review** (DAOs return DTOs, not entities) rather than by the Kotlin compiler. If stricter enforcement is desired later, options are: (a) make the entire `feature.<name>.persistence` package internal including the DAO, with the DAO consumed within the same module only (matches the current single-module layout); or (b) extract a `persistence-api` interface that's public and a private implementation. Neither is in v0 scope. Extension-function mappers themselves can stay `internal` since they're not Spring beans and aren't consumed by upstream layers.
-- **CI lint steps**: `.github/workflows/ci.yml` has `continue-on-error: true` on the `ktlintCheck`/`detekt` and frontend `npm run lint` steps. Remove these flags once the first clean lint pass is achieved.
+- **Kotlin `internal` visibility on persistence classes**: cannot mark the entity / repository as `internal` because a public DAO (called from the service layer) takes them as constructor parameters — a public function cannot expose an internal type. The "entities don't leak from DAOs" architectural principle is therefore **enforced by code review** (DAOs return DTOs, not entities) rather than by the Kotlin compiler. If stricter enforcement is desired later, options are: (a) make the entire `feature.<name>.persistence` package internal including the DAO, with the DAO consumed within the same module only (matches the current single-module layout); or (b) extract a `persistence-api` interface that's public and a private implementation. Neither is in v0 scope. Extension-function mappers themselves can stay `internal` since they're not Spring beans and aren't consumed by upstream layers.
+- **CI lint steps**: ktlint + detekt (backend) and `npm run lint` (frontend) are enforced — scaffold-era `continue-on-error: true` flags removed after the first clean pass. Detekt itself is still task-disabled in `server/build.gradle.kts` pending the 2.0.0 release (incompatible with Kotlin 2.2 today); ktlint covers formatting in the meantime.

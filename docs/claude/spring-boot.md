@@ -63,6 +63,8 @@ Each feature has one shape per layer, named without redundant suffixes:
 | Service / DAO DTO | `FooDto` | `PingDto` |
 | Entity | `Foo` | `Ping` (`@Entity` + `@Table` define it; the suffix would be redundant) |
 
+**Primary keys are `UUID`, always.** Liquibase column type `UUID` with `defaultValueComputed: 'gen_random_uuid()'` (see `liquibase.md` § Tenant-scoped table template). Hibernate entity uses `@GeneratedValue(strategy = GenerationType.UUID)` so the id is set client-side at flush time; the DB default is belt-and-suspenders for raw SQL inserts (fixtures, ops). No `BIGSERIAL`, no `Long` primary keys — UUIDs are non-sequential (no contention on monotonic inserts), tenant-collision-safe across shards if we ever scale out, and serialize uniformly as strings on the JSON wire.
+
 For features where service request and service response need genuinely different shapes (rare for v0 CRUD; common for search/projection endpoints later), split into `FooDto` + `FooSummaryDto` or similar — but default to a single `FooDto` that carries everything the layer needs, with nullable fields for "not yet set" values like an unsaved `id`.
 
 ## Mappers — Kotlin extension functions

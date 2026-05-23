@@ -29,7 +29,6 @@ jobs:
 
       - name: Lint (ktlint + detekt)
         run: ./gradlew ktlintCheck detekt
-        continue-on-error: true  # remove once both pass clean
 
   build-frontend:
     runs-on: ubuntu-latest
@@ -54,5 +53,4 @@ jobs:
 
       - name: Lint
         run: npm run lint
-        continue-on-error: true  # remove once clean
 

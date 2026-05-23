@@ -14,8 +14,7 @@ replay_pid*.log
 # ── Kotlin ────────────────────────────────────────────────────────────────
 .kotlin/
 
-# ── Generated protobuf / gRPC output ──────────────────────────────────────
-proto/build/
+# ── Generated code (kept gitignored ahead of OpenAPI codegen per issue #83) ──
 **/generated/
 **/generated-src/
 frontend/src/gen/

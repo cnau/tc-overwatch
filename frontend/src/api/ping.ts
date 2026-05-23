@@ -1,7 +1,3 @@
-// API wrapper for the Ping endpoint. Keep this pattern: one file per backend
-// domain (src/api/contacts.ts, src/api/transactions.ts, …) exporting the typed
-// request/response shapes, a typed fetch function, and TanStack Query hook(s).
-
 import { useMutation } from '@tanstack/react-query'
 
 export type PingRequest = {
