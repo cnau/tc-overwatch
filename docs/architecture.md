@@ -10,6 +10,7 @@ The implementation stack. Decisions locked here are the result of explicit requi
 | JVM | 21+ | Spring Boot 4 requires it |
 | Backend | Spring Boot 4.0.6 + Kotlin | Bleeding edge — watch third-party compat |
 | Database | Postgres 18 | `pg_trgm` for fuzzy match, `JSONB` for flexible fields |
+| Migrations | Liquibase (Groovy DSL) | Changelogs in `src/main/resources/db/changelog/`; runs via the `migrate` one-shot container as `tco_migrate` |
 | API wire format | gRPC + Protobuf | Connect protocol for browser compat |
 | Schema management | Buf | proto linting, breaking-change detection, codegen |
 | Frontend | React + TypeScript + Vite | Connect-ES client |
@@ -23,10 +24,94 @@ The implementation stack. Decisions locked here are the result of explicit requi
 
 **Spring Boot 4 + Kotlin** with Gradle (Kotlin DSL).
 
-- **JPA** (Hibernate) for persistence is the default; switch to **jOOQ** or **Exposed** later if generated query DSLs become a bottleneck. Start with the boring choice.
-- **Spring Security** for auth (Google OAuth2 client). Refresh tokens are encrypted at rest in Postgres; never returned to the browser.
-- **Multi-tenancy**: single Postgres, every domain table carries a `tenant_id` column from day one. Tenant context is bound to the request via a `TenantContext` interceptor populated from the authenticated session. Postgres row-level security is available later for hard isolation but not enabled in v0.
-- **gRPC integration**: a Spring Boot starter for grpc-java wraps the gRPC server lifecycle in Spring conventions. **Open**: pick a specific starter (e.g. `grpc-spring-boot-starter` by LogNet/yidongnan, or native `grpc-java` with manual Spring wiring). Compatibility with Spring Boot 4 is the deciding factor — confirm before committing.
+### Persistence and ORM
+
+- **Spring Data JPA + Hibernate** for persistence.
+- **Liquibase (Groovy DSL)** for schema migrations. Changelogs in `src/main/resources/db/changelog/`. Run by a one-shot `migrate` container in the deploy workflow as the `tco_migrate` role, never on app startup.
+
+### Layered architecture
+
+Strict layering: **Controller → Service → DAO → Repository**. Each layer has its own types; types from a lower layer never leak upward.
+
+| Layer | Inputs | Outputs | Notes |
+|---|---|---|---|
+| **Controller** (gRPC service impl, or HTTP `@Controller` for OAuth callback / static serving) | Protobuf request types (or HTTP request objects) | Protobuf response types (or HTTP response objects) | Converts wire-level types ↔ service DTOs |
+| **Service** | Service DTOs | Service DTOs | Business logic, multi-step coordination, transactions (`@Transactional`) |
+| **DAO** | Service DTOs | Service DTOs | Wraps Spring Data repository; converts service DTOs ↔ JPA entities. **Hibernate entities never escape this layer.** |
+| **Repository** | JPA entities | JPA entities | Pure Spring Data JPA interface |
+
+Rationale: the wire format, the business model, and the persistence model evolve at different rates. Coupling them means a DB schema change ripples through the API contract; decoupling them confines change. The cost is more types and more mapping code — paid by MapStruct, not by hand.
+
+### MapStruct for conversions
+
+**MapStruct** generates the mappers at every layer boundary (proto ↔ service DTO at the controller; service DTO ↔ entity at the DAO). Hand-rolled converters between these layers are a code smell — use MapStruct unless there's a specific reason not to (genuinely complex enrichment that's clearer as straight code).
+
+### gRPC integration
+
+`net.devh:grpc-spring-boot-starter` wraps grpc-java in Spring conventions when a Spring Boot 4–compatible release is available. **Fallback** if not: direct grpc-java with manual Spring wiring — more boilerplate but unblocks the build. Decision pinned at first commit when the dependency tree is resolved.
+
+### Authentication / Security
+
+- **Spring Security** with OAuth2 client for Google sign-in.
+- Refresh tokens are encrypted at the application layer with a KEK (from Secret Manager on GCP / `.env` on Unraid) before persisting to Postgres.
+- Session = HTTP-only Secure SameSite=Lax cookie holding an opaque session token; backend validates server-side.
+
+### Multi-tenancy in the request pipeline
+
+Single Postgres, every tenant-scoped table carries `tenant_id` (UUID, NOT NULL). **RLS is enforced from day one** — full details in *Multi-tenancy* section below. A `TenantContext` interceptor on every request derives the tenant from the authenticated session and sets `app.tenant_id` on the DB session via `SET LOCAL` at transaction start.
+
+### Locked-in defaults
+
+- **Testing**: JUnit 5 + MockK + Testcontainers (Postgres + any other infra) + AssertK assertions.
+- **Code style**: ktlint + detekt, both enforced in CI.
+- **Logging**: Logback (Spring Boot default) with a structured JSON encoder for the `prod` / `unraid` profiles.
+- **JSON**: not used at the API layer (gRPC); Jackson remains as the Spring default for the few HTTP endpoints that exist (OAuth callback, health, static serving).
+- **Package layout**: by-feature (`feature/<name>/api/`, `feature/<name>/service/`, `feature/<name>/persistence/`). Cross-cutting concerns (`config/`, `common/`, `security/`) at the top level.
+- **Transactions**: `@Transactional` on service-layer methods *and* DAO-layer methods (belt-and-suspenders against accidental call paths that skip the service).
+- **Validation**: two-layer.
+  - **Controller boundary**: shape validation only — Bean Validation (Jakarta `@Valid`) on the converted service DTO. Required-field, format, length, regex. *No DB queries here* — controllers must not need persistence to validate.
+  - **Service**: business-rule + DB-level validation (uniqueness checks, foreign-key existence, cross-entity invariants). Throws domain exceptions caught by a controller-side advisor that maps them to gRPC status codes.
+
+### HTTP surface (in addition to the gRPC surface)
+
+The Spring Boot process exposes **both** a gRPC server (the main application API, on its own port via `net.devh`) and an HTTP server (Spring MVC, default port 8080). The HTTP surface is small and deliberate:
+
+- **`/oauth/callback`** — Google OAuth redirect target. Spring MVC `@RestController` that exchanges the `code` for tokens, encrypts the refresh token, creates a session, and issues a 302 to the frontend SPA's root URL with the session cookie set.
+- **`/api/auth/*`** — any other HTTP-only auth endpoints (logout, session refresh) as needed.
+- **`/actuator/health`** — Spring Actuator health endpoint for Docker / K8s liveness/readiness probes.
+
+The backend **does not serve the React SPA**. Frontend and backend are separate codebases and separate deploys (see *Frontend deployment* below).
+
+### Frontend deployment — fully separate from backend
+
+The React frontend has its own build pipeline, its own deploy target, its own URL, and lives in a sibling `frontend/` directory in this repo. It is **never** bundled into the backend container.
+
+Rationale (informed by past pain): tightly coupling frontend assets to backend deploys means every UI tweak requires a full backend redeploy, asset-serving scaling is bound to API scaling, and rollback granularity is coarsened. Separation isn't free (CORS, two deployments, more pipeline) but the benefits dominate quickly.
+
+Where the frontend lives per environment:
+
+- **Local dev**: Vite dev server (`localhost:5173`) with a **Vite proxy** forwarding gRPC paths to the backend on `localhost:8080`. Same-origin in the browser during dev — no CORS needed locally.
+- **Unraid pilot**: separate `nginx`-based container hosting the static build, on its own Cloudflare Tunnel hostname (e.g. `app.example.com` for the frontend, `api.example.com` for the backend). Each tunnel hostname is independent; either can be deployed without touching the other.
+- **GCP production**: frontend built and pushed to **Cloud Storage + Cloud CDN** (or a small Cloud Run static container — pick later). Backend on GKE. Two distinct deploy pipelines.
+
+### CORS and cross-origin sessions
+
+Because frontend and backend live on different origins, CORS rules and cross-origin session cookies are part of day-one config:
+
+- **Backend CORS allowlist** (Spring Security) is per-profile:
+  - `local`: `http://localhost:5173` (Vite dev) — though the Vite proxy makes this rarely hit
+  - `unraid`: the public frontend hostname (e.g. `https://app.example.com`)
+  - `prod`: production frontend hostname(s)
+- **`Access-Control-Allow-Credentials: true`** on backend responses so cookies flow.
+- **Session cookie attributes**: `HttpOnly; Secure; SameSite=None; Domain=.example.com` so the browser sends the cookie on cross-origin requests within the registered parent domain. Frontend and backend hostnames **must share a parent domain** (e.g. `app.example.com` + `api.example.com` both under `.example.com`).
+- **Connect-ES client** is configured with `credentials: "include"` so the browser attaches cookies on every gRPC call.
+- **CSRF**: the combination of `SameSite=None; Secure` cookies + Connect's custom `Content-Type` header (browsers won't send cross-origin without preflight) + an explicit origin check on the OAuth callback is sufficient for v0. If we ever need stricter posture, switching from session cookies to **Bearer tokens in the `Authorization` header** is a clean upgrade — Connect-ES supports it via an interceptor with no API changes.
+
+### Why not Bearer tokens from day one?
+
+Bearer tokens (issued at OAuth-callback time, stored in frontend memory, sent on every gRPC call) avoid cross-origin cookie semantics entirely and are arguably more standard for SaaS APIs. Trade-off: storing the token safely in the frontend (memory-only, never localStorage; refresh-on-load via a short-lived "is the session still good?" call) adds frontend complexity that cookie-based sessions don't need.
+
+Cookies win for v0 because the auth complexity is centralized in the backend and the parent-domain requirement is a one-time DNS decision. Revisit if SaaS goes mobile (where bearer tokens are friendlier) or if a security review demands it.
 
 ## API — gRPC + Connect
 
@@ -110,8 +195,8 @@ deploy/helm/tc-overwatch/
 
 - **Secrets**: GCP Secret Manager, surfaced into pods via External Secrets Operator. Never in `values.yaml`.
 - **Database**: Cloud SQL Postgres, connected via the Cloud SQL Auth Proxy as a sidecar in the backend pod. No public DB exposure.
-- **Frontend**: built as static assets, served either by the backend (Spring static handler) or by a separate Nginx/CDN. **Open**: pick one — serving from the backend is simpler for v0.
-- **OAuth client (prod)**: separate from local-dev client; redirect URI is the prod ingress hostname.
+- **Frontend**: deployed *separately* from the backend — its own static bundle, either served from a tiny Nginx container or pushed to Cloud Storage + Cloud CDN. Independent deploy pipeline, independent rollback. Backend never bundles the SPA.
+- **OAuth client (prod)**: separate from local-dev client; redirect URI is the prod backend hostname (e.g. `https://api.example.com/oauth/callback`).
 - **CI/CD**: TBD. Likely GitHub Actions → Artifact Registry image push → Helm upgrade. Not blocking; can ship the first version manually.
 
 ## Alternate deployment: private network (Unraid)
@@ -142,7 +227,7 @@ Cloudflare Tunnel is the recommended bridge from the public internet to the home
 
 - **No port forwarding** on the home router; the tunnel is initiated outbound from a `cloudflared` container.
 - **Free TLS** at the Cloudflare edge with a real public hostname (e.g. `tco.example.com` if the developer owns a domain, or a `*.trycloudflare.com` URL otherwise — prefer the owned domain).
-- **OAuth-friendly**: Google's OAuth flow needs a real HTTPS redirect URI; Cloudflare-fronted hostnames work transparently. Register the public hostname as an authorized redirect URI in the Google OAuth client.
+- **OAuth-friendly**: Google's OAuth flow needs a real HTTPS redirect URI; Cloudflare-fronted hostnames work transparently. Register the **backend** hostname (`api.example.com/oauth/callback`) as an authorized redirect URI in the Google OAuth client. Frontend and backend each get their own Cloudflare Tunnel hostname (e.g. `app.example.com` for frontend, `api.example.com` for backend) — independent, parent-domain-shared so session cookies work cross-origin.
 - **Cloudflare WAF + bot protection** (free tier) gives baseline edge protection comparable in *intent* to Cloud Armor, though not feature-equivalent.
 - **Cloudflare Access** (zero-trust application gate) is a free add-on if the developer wants an extra auth layer in front of the app during pilot — e.g. "only specific email addresses can even reach the login page." Probably overkill for invitation-only pilot but worth knowing it's there.
 
@@ -185,25 +270,31 @@ GitHub Actions for the pipeline; GitHub Container Registry (GHCR) for the image.
 
 ### Pipeline shape
 
+**Two parallel build pipelines** (one per codebase), each with its own deploy fan-out:
+
 ```
 On push to main:
-  ┌────────────────────────────────────────────────┐
-  │  GitHub Actions (cloud)                         │
-  │  1. Checkout, setup Java 21 + Node              │
-  │  2. ./gradlew test                              │
-  │  3. ./gradlew bootBuildImage  (Spring Boot      │
-  │     Cloud Native Buildpacks → OCI image)        │
-  │  4. docker push → GHCR with tag = git SHA       │
-  │     + 'main' moving tag                         │
-  └─────────────────┬───────────────────────────────┘
-                    │
-              ┌─────┴──────┐
-              ▼            ▼
-  ┌──────────────┐  ┌──────────────────┐
-  │ deploy-unraid│  │ deploy-prod      │
-  │ (pilot)      │  │ (later, GCP)     │
-  └──────────────┘  └──────────────────┘
+  ┌─────────────────────────┐    ┌─────────────────────────┐
+  │  build-server (GH-A)    │    │  build-frontend (GH-A)  │
+  │  1. setup Java 21       │    │  1. setup Node          │
+  │  2. ./gradlew test      │    │  2. npm ci && npm test  │
+  │  3. bootBuildImage      │    │  3. npm run build       │
+  │  4. push → GHCR (SHA)   │    │  4. push static bundle  │
+  │                          │    │     to GHCR (nginx     │
+  │                          │    │     image) or asset    │
+  │                          │    │     store              │
+  └────────────┬─────────────┘    └────────────┬────────────┘
+               │                                │
+         ┌─────┴──────┐                  ┌──────┴──────┐
+         ▼            ▼                  ▼             ▼
+   ┌──────────┐  ┌──────────┐      ┌──────────┐  ┌──────────┐
+   │ deploy-  │  │ deploy-  │      │ deploy-  │  │ deploy-  │
+   │ unraid-  │  │ prod-    │      │ unraid-  │  │ prod-    │
+   │ server   │  │ server   │      │ frontend │  │ frontend │
+   └──────────┘  └──────────┘      └──────────┘  └──────────┘
 ```
+
+Frontend and backend deploys are independent. Either can ship without the other. The contract between them is the proto schema (Buf catches breaking changes in CI before a bad proto change can deploy).
 
 ### Unraid deploy: self-hosted runner
 
@@ -215,12 +306,12 @@ Setup:
 - Mount the runner's working directory and the compose files onto the runner so it can `docker compose` against the host's Docker socket (or use Docker-in-Docker if isolation matters more).
 - Runner uses a fine-scoped PAT or GitHub App credentials with permission only to receive jobs for the repo.
 
-`deploy-unraid` job steps:
+`deploy-unraid-server` job steps (backend):
 
 ```yaml
 runs-on: [self-hosted, unraid]
 steps:
-  - name: Pull new image
+  - name: Pull new server image
     run: docker compose -f docker-compose.unraid.yml pull backend
   - name: Run DB migrations (separate one-shot container)
     run: docker compose -f docker-compose.unraid.yml run --rm migrate
@@ -232,10 +323,24 @@ steps:
     run: ./scripts/smoke.sh
 ```
 
+`deploy-unraid-frontend` job steps:
+
+```yaml
+runs-on: [self-hosted, unraid]
+steps:
+  - name: Pull new frontend image (nginx + static bundle)
+    run: docker compose -f docker-compose.unraid.yml pull frontend
+  - name: Restart frontend
+    run: docker compose -f docker-compose.unraid.yml up -d frontend
+  - name: Wait for healthcheck
+    run: ./scripts/wait-for-healthy.sh frontend 30s
+```
+
 Important properties:
 
-- **Migrations run in a separate container** (`migrate` service in compose, using the `tco_migrate` DB role), not on app startup. This makes migration failures a clean deploy failure rather than a silent crash loop.
-- **Backend starts only after migrations succeed.** Compose `depends_on` + the `migrate` service's `restart: "no"` + the deploy job's serial steps enforce this.
+- **Migrations run in a separate container** (`migrate` service in compose, using the `tco_migrate` DB role), not on app startup. Migration failures = clean deploy failure rather than silent crash loop.
+- **Backend starts only after migrations succeed.** Compose `depends_on` + the `migrate` service's `restart: "no"` + serial job steps enforce this.
+- **Frontend deploy never touches the backend, and vice versa.** Two independent pipelines, two independent Cloudflare Tunnel hostnames.
 - **No secrets in the CI workflow** — the runner has local access to the `.env` file on Unraid that docker-compose mounts. CI never sees DB credentials or OAuth secrets.
 
 ### Image tagging strategy
@@ -258,10 +363,9 @@ If the self-hosted-runner setup feels heavyweight, **Watchtower** is a viable su
 
 When the time comes for GCP:
 
-- Same GHCR image, same SHA-tagging.
-- GitHub Actions deploy job runs `helm upgrade --install` against the GKE cluster.
-- **OIDC token federation** for GCP authentication — GitHub Actions exchanges its OIDC token for short-lived GCP credentials via Workload Identity Federation. **No service account JSON keys stored in GitHub Secrets.** This is the modern equivalent of using Workload Identity inside the cluster.
-- Promotion gate: only release tags (not `main`) trigger the GCP deploy.
+- **Backend**: same GHCR image, same SHA-tagging. GitHub Actions deploy job runs `helm upgrade --install` against the GKE cluster. **OIDC token federation** for GCP authentication — GitHub Actions exchanges its OIDC token for short-lived GCP credentials via Workload Identity Federation. **No service account JSON keys stored in GitHub Secrets.**
+- **Frontend**: built and pushed to Cloud Storage + Cloud CDN (or a small Cloud Run static container — pick at the time). Independent deploy job using the same OIDC federation pattern. Cache-busting via content-hashed filenames in the build output.
+- **Promotion gate**: only release tags (not `main`) trigger the GCP deploy, for both backend and frontend.
 
 ### Local dev needs none of this
 
@@ -282,7 +386,7 @@ Developer runs `gradle bootRun` and `vite dev` from their laptop against a local
     USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
   ```
 - The Spring Boot request pipeline sets `app.tenant_id` on the Postgres session at the start of each transaction, derived from the authenticated user. A small `@Component` `TenantConnectionInterceptor` (or equivalent JPA listener) executes `SET LOCAL app.tenant_id = '<uuid>'` on connection acquisition; the value is cleared at transaction end.
-- Migrations declare RLS policies alongside the tables they protect (Flyway / Liquibase migrations include both `CREATE TABLE` and `CREATE POLICY` in the same file).
+- Migrations declare RLS policies alongside the tables they protect (Liquibase (Groovy DSL) migrations include both `CREATE TABLE` and `CREATE POLICY` in the same file).
 - Tests use Testcontainers Postgres with the same RLS policies enabled; a test must explicitly set the tenant context to read/write rows, which catches cross-tenant bugs at unit-test time.
 
 ### Three Postgres roles, separated by privilege
@@ -293,7 +397,7 @@ Some operations legitimately need to cross tenant boundaries (tenant provisionin
 |---|---|---|---|
 | `tco_app` | No | ~99% of code paths — all per-tenant request handlers and per-tenant jobs | Every query runs with `SET LOCAL app.tenant_id` |
 | `tco_admin` | Yes | Tenant lifecycle (create / delete), admin RPCs, cross-tenant reports, system-wide maintenance jobs | Connections acquired via explicit `withAdminConnection { ... }` marker only |
-| `tco_migrate` | Superuser (DDL) | Flyway / Liquibase migrations only | Never used by application code at runtime |
+| `tco_migrate` | Superuser (DDL) | Liquibase (Groovy DSL) migrations only | Never used by application code at runtime |
 
 Code-level enforcement: there are exactly two connection pools — the default app pool (`tco_app`) and the admin pool (`tco_admin`). Switching pools requires an explicit `withAdminConnection { ... }` block that's grep-able, reviewable, and unambiguous about intent. Implicit / accidental admin-role access is impossible.
 
@@ -428,8 +532,17 @@ These are implementation choices to make at code-writing time, not in this doc:
 
 Spring Boot 4 + Spring Framework 7 are recent enough that **third-party Spring Boot starters may not yet have GA-tagged compatible releases**. The most likely friction points:
 
-- gRPC Spring starters (community-maintained, historically lag Spring Boot majors by 3–6 months)
-- Any Spring Security extensions
-- JPA-extension libraries
+- gRPC Spring starters (community-maintained, historically lag Spring Boot majors by 3–6 months) — **resolved on the initial scaffold**: `net.devh:grpc-server-spring-boot-starter:3.1.0.RELEASE` compiles and resolves dependencies cleanly against Spring Boot 4.0.6 + Kotlin 2.2.0 + JDK 23. Watch for runtime issues if/when this changes.
+- Any Spring Security extensions — still untested; first usage lands when auth is implemented.
+- JPA-extension libraries — base Spring Data JPA loads fine.
 
 Mitigation: pin to specific Spring Boot 4–compatible versions where they exist; fall back to direct grpc-java integration without a Spring starter if necessary.
+
+## Scaffold notes (from `scaffold/initial` branch)
+
+Things discovered while building the initial scaffold that are worth remembering:
+
+- **JDK toolchain**: the `org.gradle.toolchains.foojay-resolver-convention` plugin at version `0.10.0` has a known bug with Gradle 9.5.1 (throws `"IBM_SEMERU"` when attempting auto-download). Workaround used: rely on a locally-installed JDK (Java 23 on the dev machine) by setting the toolchain to `JavaLanguageVersion.of(23)` in both module build files. Revisit when foojay ships a fix or when JDK 21 is installed locally for stricter version alignment.
+- **Kotlin `internal` visibility on persistence classes**: cannot mark `PingEntity` / `PingRepository` / `PingEntityMapper` as `internal` because the public `PingDao` (called from the service layer) takes them as constructor parameters — a public function cannot expose an internal type. The "entities don't leak from DAOs" architectural principle is therefore **enforced by code review** (DAOs return DTOs, not entities) rather than by the Kotlin compiler. If stricter enforcement is desired later, options are: (a) make the entire `feature.<name>.persistence` package internal including the DAO, with the DAO consumed within the same module only (matches the current single-module layout); or (b) extract a `persistence-api` interface that's public and a private implementation. Neither is in v0 scope.
+- **MapStruct + proto-builder warning**: `PingProtoMapper` is currently a hand-rolled Kotlin class (not MapStruct) because proto messages use a builder pattern that surfaces a `Unmapped target properties` warning for all the builder-internal methods (`mergeFrom`, `clearField`, etc.). When migrating to MapStruct, add `@BeanMapping(ignoreUnmappedTargetProperties = true)` or explicit `@Mapping(target = "X", ignore = true)` for each.
+- **CI lint steps**: `.github/workflows/ci.yml` has `continue-on-error: true` on the `ktlintCheck`/`detekt` and frontend `npm run lint` steps. Remove these flags once the first clean lint pass is achieved.

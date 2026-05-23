@@ -1,0 +1,83 @@
+# Centralized version catalog. All module build files reference these via `libs.*`.
+#
+# Watch items (bleeding edge): Spring Boot 4 was very recently GA. Some third-party
+# Spring starters (notably net.devh's gRPC starter) historically lag major releases by
+# 3-6 months. If a referenced version below does not resolve at build time, options are
+# to pin to a known-compatible release, switch to direct grpc-java without a Spring
+# starter (more boilerplate), or downgrade Spring Boot to 3.x temporarily.
+
+[versions]
+kotlin                  = "2.2.0"
+springBoot              = "4.0.6"
+springDepMgmt           = "1.1.7"
+grpcSpringStarter       = "3.1.0.RELEASE"   # net.devh — confirm SB4 support at first build
+grpcJava                = "1.74.0"
+grpcKotlin              = "1.4.3"
+protobuf                = "4.32.0"
+protobufPlugin          = "0.9.5"
+mapstruct               = "1.6.3"
+liquibase               = "4.32.0"
+liquibaseGroovyDsl      = "4.0.0"
+postgresJdbc            = "42.7.7"
+testcontainers          = "1.21.3"
+junit                   = "5.12.0"
+mockk                   = "1.13.13"
+assertk                 = "0.28.1"
+detekt                  = "1.23.7"
+ktlintPlugin            = "12.1.2"
+
+[libraries]
+# Spring Boot BOM (pulls in Spring web, security, data-jpa, actuator, etc. via dependency-management plugin)
+springBoot-starter-web              = { module = "org.springframework.boot:spring-boot-starter-web" }
+springBoot-starter-security         = { module = "org.springframework.boot:spring-boot-starter-security" }
+springBoot-starter-oauth2-client    = { module = "org.springframework.boot:spring-boot-starter-oauth2-client" }
+springBoot-starter-data-jpa         = { module = "org.springframework.boot:spring-boot-starter-data-jpa" }
+springBoot-starter-actuator         = { module = "org.springframework.boot:spring-boot-starter-actuator" }
+springBoot-starter-validation       = { module = "org.springframework.boot:spring-boot-starter-validation" }
+springBoot-starter-test             = { module = "org.springframework.boot:spring-boot-starter-test" }
+
+# gRPC
+grpc-springStarter-server           = { module = "net.devh:grpc-server-spring-boot-starter", version.ref = "grpcSpringStarter" }
+grpc-springStarter-client           = { module = "net.devh:grpc-client-spring-boot-starter", version.ref = "grpcSpringStarter" }
+grpc-protobuf                       = { module = "io.grpc:grpc-protobuf", version.ref = "grpcJava" }
+grpc-stub                           = { module = "io.grpc:grpc-stub", version.ref = "grpcJava" }
+grpc-services                       = { module = "io.grpc:grpc-services", version.ref = "grpcJava" }
+grpc-netty-shaded                   = { module = "io.grpc:grpc-netty-shaded", version.ref = "grpcJava" }
+grpc-kotlin-stub                    = { module = "io.grpc:grpc-kotlin-stub", version.ref = "grpcKotlin" }
+protobuf-kotlin                     = { module = "com.google.protobuf:protobuf-kotlin", version.ref = "protobuf" }
+protobuf-java                       = { module = "com.google.protobuf:protobuf-java", version.ref = "protobuf" }
+javax-annotation-api                = { module = "javax.annotation:javax.annotation-api", version = "1.3.2" }
+
+# Persistence
+postgres-jdbc                       = { module = "org.postgresql:postgresql", version.ref = "postgresJdbc" }
+liquibase-core                      = { module = "org.liquibase:liquibase-core", version.ref = "liquibase" }
+liquibase-groovyDsl                 = { module = "org.liquibase:liquibase-groovy-dsl", version.ref = "liquibaseGroovyDsl" }
+
+# Mapping
+mapstruct                           = { module = "org.mapstruct:mapstruct", version.ref = "mapstruct" }
+mapstruct-processor                 = { module = "org.mapstruct:mapstruct-processor", version.ref = "mapstruct" }
+
+# Kotlin
+kotlin-reflect                      = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }
+kotlin-stdlib                       = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
+
+# Testing
+junit-bom                           = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter                       = { module = "org.junit.jupiter:junit-jupiter" }
+mockk                               = { module = "io.mockk:mockk", version.ref = "mockk" }
+assertk                             = { module = "com.willowtreeapps.assertk:assertk-jvm", version.ref = "assertk" }
+testcontainers-bom                  = { module = "org.testcontainers:testcontainers-bom", version.ref = "testcontainers" }
+testcontainers-junit                = { module = "org.testcontainers:junit-jupiter" }
+testcontainers-postgres             = { module = "org.testcontainers:postgresql" }
+
+# Plugin classpath entries (referenced by id below)
+[plugins]
+kotlin-jvm                          = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-spring                       = { id = "org.jetbrains.kotlin.plugin.spring", version.ref = "kotlin" }
+kotlin-jpa                          = { id = "org.jetbrains.kotlin.plugin.jpa", version.ref = "kotlin" }
+kotlin-kapt                         = { id = "org.jetbrains.kotlin.kapt", version.ref = "kotlin" }
+springBoot                          = { id = "org.springframework.boot", version.ref = "springBoot" }
+springDepMgmt                       = { id = "io.spring.dependency-management", version.ref = "springDepMgmt" }
+protobuf                            = { id = "com.google.protobuf", version.ref = "protobufPlugin" }
+detekt                              = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
+ktlint                              = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlintPlugin" }

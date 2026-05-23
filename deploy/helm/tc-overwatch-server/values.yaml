@@ -1,0 +1,65 @@
+# Default values for the server chart.
+# Per-environment overrides land in values-staging.yaml / values-prod.yaml (not in this PR).
+
+image:
+  repository: ghcr.io/cnau/tc-overwatch-server
+  pullPolicy: IfNotPresent
+  tag: ""           # defaults to .Chart.AppVersion when empty
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  httpPort: 8080
+  grpcPort: 9090
+
+# Spring profile to activate at startup (prod, staging, etc.).
+springProfile: prod
+
+# Cloud SQL Auth Proxy sidecar — wired in deployment.yaml when enabled.
+cloudSqlAuthProxy:
+  enabled: false
+  instanceConnectionName: ""    # e.g. project:region:instance
+  image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.13.0
+
+# Workload Identity — bind the K8s ServiceAccount to a GCP service account.
+serviceAccount:
+  create: true
+  name: ""                      # defaults to "tc-overwatch-server" if empty
+  gcpServiceAccount: ""         # e.g. tc-overwatch@my-project.iam.gserviceaccount.com
+
+# Resources — tighten when production load is known.
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+# Probes hit Spring Actuator endpoints.
+probes:
+  liveness:
+    path: /actuator/health/liveness
+    initialDelaySeconds: 30
+    periodSeconds: 10
+  readiness:
+    path: /actuator/health/readiness
+    initialDelaySeconds: 10
+    periodSeconds: 5
+
+# Ingress (GKE managed cert). Left disabled by default; enable per-environment.
+ingress:
+  enabled: false
+  hostname: ""
+  className: ""
+  annotations: {}
+
+# External Secrets references — values resolved from GCP Secret Manager at sync time.
+externalSecrets:
+  enabled: false
+  secretStoreRef: ""           # the ClusterSecretStore name
+
+# NetworkPolicy — default-deny + explicit allows. Will be defined when the chart matures.
+networkPolicy:
+  enabled: false
