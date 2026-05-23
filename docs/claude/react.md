@@ -1,41 +1,22 @@
 # React Conventions
 
-Shared frontend guidance. Imported by `frontend/CLAUDE.md`.
+Operational guidance for the React/TypeScript frontend. Stack pinned in `architecture.md` § Frontend.
 
-## Tech baseline
+Installed (scaffold): React 19, TypeScript 5.7, Vite 6, ESLint 9 flat config.
 
-Installed today (scaffold):
+Pinned, install per-feature: Connect-ES + **Connect-Query** (primary path; auto-generates query/mutation hooks per RPC), TanStack Query v5+, Mantine v8+ (`@mantine/core` + `@mantine/hooks`; sub-packages per-feature), React Router v6.4+ Data Router, react-hook-form + Zod (`@hookform/resolvers/zod`), Vitest + RTL + user-event + MSW or `createRouterTransport` for transport-level mocking.
 
-- **React 19** + **TypeScript 5.7** (strict)
-- **Vite 6** for dev server, build, and bundling
-- **ESLint 9** (flat config) with `@eslint/js`, `typescript-eslint`, `eslint-plugin-react-hooks`, `eslint-plugin-react-refresh`
+## TypeScript
 
-Pinned stack (per `docs/architecture.md` § Frontend) — install per-feature, don't preemptively `npm install` everything:
+TypeScript only. No JS in `src/`. Strict mode stays on.
 
-- **Connect-ES** (`@connectrpc/connect-web` + `@connectrpc/connect`) — the only path that calls the backend. Generated clients live in `src/gen/` (Buf output; never hand-edit).
-- **TanStack Query** (`@tanstack/react-query`) — server state cache layered over Connect-ES. Cache keys: RPC method + request.
-- **Mantine v7+** — UI components. Core packages: `@mantine/core`, `@mantine/hooks`. Optional packages (`@mantine/dates`, `@mantine/notifications`, `@mantine/modals`, `@mantine/dropzone`, `@mantine/charts`) land as features need them.
-- **React Router v6+** (`react-router-dom`) with the Data Router (`createBrowserRouter`).
-- **react-hook-form** + **Zod** + `@hookform/resolvers/zod` — forms and validation.
-- **Vitest** + **React Testing Library** + **@testing-library/user-event** — testing.
-
-When you add a library, pin its version in `package.json` and update `frontend/CLAUDE.md`.
-
-## TypeScript-first
-
-This is a TypeScript-only codebase. No JavaScript source files in `src/`.
-
-- **Never `any`.** For external/unknown shapes (third-party callbacks, raw API responses before generated clients are in place), use `unknown` and narrow with type guards.
-- **Never `@ts-nocheck` or `@ts-ignore`.** Both produce a visual rename with zero protection against contract drift. If a file genuinely can't be typed cleanly in one pass, surface it; don't silently suppress.
-- `tsconfig.json` strict mode stays on. If you find yourself wanting to disable a strict-mode flag to make code compile, the code is the problem, not the flag.
-
-## Clean, reusable, modular
-
-- **Single responsibility** — a component renders, a hook encapsulates behavior, a query owns one piece of server state. Don't mix.
-- **Small files** — if a component is hard to read, split it.
-- **Pure where possible** — render functions and selectors should be pure. Side effects go in hooks or mutation handlers.
-- **Reuse before reinvent** — check `src/components/`, `src/hooks/`, `src/lib/` before writing anything generic.
-- **Co-locate** — tests, styles, and small helpers live next to the component that uses them. Promote to a shared location only when a second consumer appears.
+- Never `any` — use `unknown` and narrow.
+- Never `@ts-nocheck` / `@ts-ignore` — surface the typing problem instead.
+- No `React.FC` / `React.FunctionComponent` — annotate the props type directly.
+- `type` over `interface` for component props and most shapes.
+- Discriminated unions for variant props (mutually exclusive shapes — catches invalid combos at compile time).
+- `satisfies` for config-like objects when you need the literal-type narrowing.
+- `ReactNode` (not `JSX.Element`) for `children`.
 
 ## Directory structure (target)
 
@@ -55,150 +36,156 @@ The scaffold currently ships with only `App.tsx` + `main.tsx`. Build out the tre
 
 ## State management
 
-Three layers — pick the right one:
+Four buckets, pick the right one:
 
-1. **TanStack Query** (`src/api/`) — for anything from the backend. Cache key = RPC method + request. Mutations invalidate relevant queries by query key. Never call a generated Connect client directly from a component — wrap in a `useFoo` query hook.
-2. **React local state** (`useState`, `useReducer`) — for everything client-side that lives within one component's tree.
-3. **React Context** — only when a value is genuinely shared across an unrelated subtree (auth user, theme). Don't reach for it for short-distance prop drilling.
+1. **Server state → Connect-Query / TanStack Query.** Anything from the backend. The hook *is* the state — don't shadow it in `useState`.
+2. **URL state → `useSearchParams` / route params.** Filters, tabs, selected row id, pagination, open drawer. Linkable, refresh-safe, decouples siblings.
+3. **Local component state → `useState` / `useReducer`.** Form drafts, hover, transient UI flags. Use `useReducer` when 3+ related values change together (wizards, multi-flag form state — model as a sealed-state reducer).
+4. **Cross-tree shared → React Context.** Auth user, theme, transport. Not for short-distance prop drilling.
 
-No global store (no Redux, no Zustand, no Jotai). Server state belongs in TanStack Query; everything else is either local or context.
+No global store (no Redux, Zustand, Jotai).
 
-## Connect-ES + TanStack Query pattern
+## Connect-Query
+
+Primary backend-call path: import the generated `useQuery` / `useMutation` from `@/gen/.../<service>-<Service>_connectquery` and pass the generated RPC reference + params. Cache keys are managed automatically; invalidate via `<rpc>.getQueryKey()`.
 
 ```ts
-// src/api/email.ts
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { createConnectTransport } from '@connectrpc/connect-web'
-import { createPromiseClient } from '@connectrpc/connect'
-import { EmailService } from '@/gen/com/tcoverwatch/email/v1/email_service_connect'
+const { data, isPending, error } = useQuery(list, { /* params */ })
 
-const transport = createConnectTransport({ baseUrl: '/rpc', credentials: 'include' })
-const client = createPromiseClient(EmailService, transport)
-
-export const emailKeys = {
-  all: ['email'] as const,
-  list: (params: ListParams) => [...emailKeys.all, 'list', params] as const,
-}
-
-export function useEmailList(params: ListParams) {
-  return useQuery({
-    queryKey: emailKeys.list(params),
-    queryFn: () => client.list(params),
-  })
-}
-
-export function useLabelEmail() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (req: LabelRequest) => client.label(req),
-    onSuccess: () => qc.invalidateQueries({ queryKey: emailKeys.all }),
-  })
-}
+const labelEmail = useMutation(label, {
+  onSuccess: () => queryClient.invalidateQueries({ queryKey: list.getQueryKey() }),
+})
 ```
 
-- `credentials: 'include'` so session cookies attach on every call (cross-origin in prod — see `architecture.md` § CORS).
-- Vite proxy maps `/rpc/*` → backend gRPC in local dev (`vite.config.ts`).
+App wraps in `<TransportProvider transport={transport}><QueryClientProvider client={queryClient}>...</...>...</...>`. Transport: `createConnectTransport({ baseUrl: '/rpc', credentials: 'include' })` — `credentials: 'include'` attaches the session cookie (cross-origin in prod, see `architecture.md` § CORS). Vite proxy maps `/rpc/*` → backend in dev.
+
+**Manual fallback**: only when Connect-Query can't express the case (streaming, custom cache shapes). Wrap `createPromiseClient` in a `useFoo` hook in `src/api/<domain>.ts`. Components never call generated clients directly.
 
 ## Components
 
-- **Function components only.**
-- **One component per file**, default-exported (`PascalCase` filename matching the component).
-- **Props destructured at the top.** No `props.foo` scattered through the body.
-- **Lift state only as far as it needs to go.** Local state stays local.
-- **Memoize when measurements show it matters** — not by default. `React.memo`, `useMemo`, `useCallback` are tools, not habits.
+Function components, one per file, default-exported, PascalCase filename. Destructure props at the signature. `ref` is a regular prop in React 19 (no `forwardRef`). Memoize only when measurements show it matters.
+
+### Modular component design
+
+Default mindset: **small contracts, composition over configuration.** Reusability is the *outcome* of good design — don't pursue it by adding props.
+
+**Three tiers, different reuse expectations:**
+
+| Tier | Where | Reuse | Example |
+|---|---|---|---|
+| Primitives | `src/components/primitives/` | Wide | `AppButton`, `Money` (Mantine wrappers w/ project defaults) |
+| Composite | `src/components/<kind>/` | 2–N places | `StatCard`, `EmptyState`, `ConfirmDialog` |
+| Domain | `src/components/<domain>/` or co-located | 1–2 places | `TransactionRow`, `EmailTriagePanel` |
+
+A `TransactionRow` reused in two places is still domain, not a primitive. Don't over-promote.
+
+**Composition over configuration.** A component with 8 boolean props is a smell. Use `children` / compound components instead:
+
+```tsx
+<Card>
+  <Card.Header><Title>Foo</Title></Card.Header>
+  <Card.Body>...</Card.Body>
+  <Card.Footer><Button>Save</Button></Card.Footer>
+</Card>
+```
+
+- Default to accepting `children`.
+- Multiple regions → compound components (`<Foo.X>`, Mantine-style) over render-prop slots.
+- One consumer needs a tweak that the other four don't → wrap locally, don't add a prop.
+
+**Compound components**: dot-namespaced sub-components sharing state via internal Context. This is how Mantine's `Tabs` / `Accordion` / `Menu` work — follow the same shape.
+
+**Pass-through with rest spread** when wrapping Mantine — keep the underlying API accessible:
+
+```tsx
+function AppButton({ variant = 'primary', ...rest }: AppButtonProps) {
+  return <MantineButton color={variant === 'danger' ? 'red' : 'blue'} {...rest} />
+}
+```
+
+**Stable, minimal APIs.** Start with the props you actually need. Don't expose internal state shape (5 `useState` hooks ≠ 5 `onChange` props). No leaky abstractions — a primitive that takes Mantine `sx` is leaking Mantine.
+
+**Split when**: file > ~200 lines, JSX > 4 levels deep, > 5 unrelated `useState`s, or a clear independent sub-component name suggests itself.
+
+**Container vs presentational** as a loose convention: data-fetching (queries, route loaders) at the container; rendering component takes already-fetched data as props. Makes the renderer trivially testable without mocking transports.
 
 ## Routing
 
-- **React Router v6+** with the Data Router. The single `createBrowserRouter(routes)` config lives in `src/router/routes.tsx`; `App.tsx` wraps it with `<RouterProvider />`.
-- Page components live in `src/pages/` (`DashboardPage.tsx`, `TransactionDetailsPage.tsx`, etc.); routes import them eagerly. Lazy-load only when bundle size measurements justify it.
-- Use route `loader`s for data that must be present before render (e.g. the dashboard's initial fetch). Loaders sit naturally next to TanStack Query — call `queryClient.fetchQuery` from a loader to populate the cache, then the component reads via `useQuery` and gets an instant hit.
-- Use `<Outlet />` for nested layouts (e.g. the dashboard shell wrapping individual transaction views).
-- Navigation: `<Link>` and `useNavigate()` — never use raw `<a href>` for in-app routes.
+`createBrowserRouter(routes)` in `src/router/routes.tsx`; `<RouterProvider />` in `App.tsx`. Pages in `src/pages/` eagerly imported. Use route `loader`s for data that must be present before render — call `queryClient.fetchQuery` from a loader and the component reads via `useQuery` with an instant cache hit. `<Outlet />` for nested layouts. `<Link>` / `useNavigate()` for in-app navigation — never raw `<a href>`.
 
-## Styling — Mantine
+## Mantine
 
-- **Setup**: install `@mantine/core` + `@mantine/hooks`, import `@mantine/core/styles.css` once at the app root, wrap the tree in `<MantineProvider theme={theme}>`. Theme object lives in `src/theme/`. PostCSS preset with `postcss-preset-mantine` is required for Mantine's mixins (`mantine-light-dark`, `rem`, etc.) — add it to `postcss.config.cjs` per Mantine's setup guide.
-- **Components first** — Mantine's `Button`, `TextInput`, `Select`, `Modal`, `Drawer`, `Notification`, etc. cover most UI needs. Reach for these before writing a custom component.
-- **Layout** — use Mantine's layout primitives (`Stack`, `Group`, `Flex`, `Grid`, `SimpleGrid`, `Container`). Don't use raw `<div>` for layout when a named primitive expresses the intent.
-- **`style` prop** for one-off styling on Mantine components: `style={{ marginTop: 16 }}` is fine for small tweaks. For anything reusable or non-trivial, write a **CSS Module** (`Foo.module.css`) co-located with the component.
-- **`rem` units** — Mantine uses `rem` throughout for accessibility. Match that convention; don't hardcode `px` for spacing or font sizes.
-- **Theming** — colors, spacing scale, breakpoints, and component defaults live in the `MantineThemeOverride` object in `src/theme/`. Don't hardcode colors in components — reference theme tokens (`var(--mantine-color-blue-6)` in CSS, or `theme.colors.blue[6]` in TS).
-- **No additional styling systems.** Don't add Tailwind, styled-components, emotion, or Sass alongside Mantine — pick one. Mantine is the pick.
+Setup per Mantine's guide: `@mantine/core` + `@mantine/hooks`, import `@mantine/core/styles.css`, wrap in `<MantineProvider theme={theme}>`, add `postcss-preset-mantine` to `postcss.config.cjs`. Theme lives in `src/theme/`.
+
+- **Components first** — Mantine covers Button/TextInput/Select/Modal/Drawer/Notification/etc. Reach for these before writing custom.
+- **Layout primitives** (`Stack`, `Group`, `Flex`, `Grid`, `SimpleGrid`, `Container`) — use them over raw `<div>` when they express the intent.
+- **`style` prop** for one-off tweaks; **CSS Modules** (`Foo.module.css`, co-located) for anything reusable.
+- **`rem` units**, theme tokens — never hardcode colors / spacing / font sizes.
+- **No additional styling systems.** No Tailwind, styled-components, emotion, Sass.
 
 ## Forms
 
-- **react-hook-form** for any form with more than two fields or any cross-field validation.
-- **Validation: Zod schemas** wired via `@hookform/resolvers/zod`. Service-DTO shape is the source of truth; the Zod schema is the client-side mirror.
-- **Do not use `@mantine/form`.** Mantine ships its own form package but we use react-hook-form because (a) it works with any UI library and (b) the Zod-as-source-of-truth pattern is cleaner end-to-end. Mantine inputs integrate with react-hook-form via `Controller`:
+- react-hook-form for any form > 2 fields or with cross-field validation. Zod schemas via `@hookform/resolvers/zod` — Zod mirrors the backend service-DTO shape, which is the source of truth.
+- **Never use `@mantine/form`** — react-hook-form is the project standard.
+- Mantine inputs wire to RHF via `Controller`. `register()` is fine for 1-2 plain text fields; `Controller` for anything with non-`input` API (`Select`, `DateInput`, `MultiSelect`, etc.).
 
-  ```tsx
-  import { Controller, useForm } from 'react-hook-form'
-  import { zodResolver } from '@hookform/resolvers/zod'
-  import { TextInput } from '@mantine/core'
-
-  const schema = z.object({ name: z.string().min(1) })
-  type FormData = z.infer<typeof schema>
-
-  function ContactForm() {
-    const { control, handleSubmit } = useForm<FormData>({ resolver: zodResolver(schema) })
-    return (
-      <form onSubmit={handleSubmit(onSubmit)}>
-        <Controller
-          name="name"
-          control={control}
-          render={({ field, fieldState }) => (
-            <TextInput {...field} label="Name" error={fieldState.error?.message} />
-          )}
-        />
-      </form>
-    )
-  }
-  ```
-
-- For simple controlled inputs (1-2 fields, no validation), `register()` is shorter than `Controller`. Reach for `Controller` whenever the Mantine component needs custom `value`/`onChange` wiring or has a non-`input` API (e.g. `Select`, `DateInput`, `MultiSelect`).
+**Reusable field wrappers** in `src/components/forms/` once the second form lands — extract typed `RhfTextInput<T>`, `RhfSelect<T>`, etc. that hide the `Controller` boilerplate. The wrapper takes `name: FieldPath<T>`, pulls `control` from `useFormContext`, spreads `field` into the Mantine input, and surfaces `fieldState.error?.message` as `error`. Build out the family as you need each; don't pre-fabricate.
 
 ## Hooks
 
-- **Custom hooks** when stateful logic is reused across two or more components, or when a component body has too many `useEffect` blocks to follow.
-- Name them `useXxx`, return a stable shape (object or tuple).
-- Don't wrap a single line of state in a custom hook — that's noise, not abstraction.
+- Extract a custom hook when stateful logic repeats across 2+ components or a component has too many `useEffect` blocks to follow.
+- Check `@mantine/hooks` first — `useDebouncedValue`, `useDisclosure`, `useClickOutside`, `useElementSize`, `useLocalStorage`, `useMediaQuery`, and others are already there.
+- Naming: `useXxx` for accessors, `useXxxMutation` for mutations (matches Connect-Query).
+- Stable return shape per hook (tuple or object, not mixed).
+- > 2-3 `useEffect`s in one component is a smell — usually means state belongs in TanStack Query / route loaders / event handlers, not effects.
+
+## Accessibility
+
+Mantine has solid defaults; don't undermine them.
+
+- Every input has a `label` — don't substitute `aria-label` unless the layout precludes a visible label.
+- `ActionIcon` (and any icon-only control) takes `aria-label`. Always set it.
+- Never communicate state with color alone — pair with an icon or text.
+- Don't trap focus, don't set `tabIndex > 0`, don't put `onClick` on a non-button without keyboard handlers (better: just use `Button` / `ActionIcon`).
+- Tab through the page when verifying a UI change.
+
+## Error boundaries and Suspense
+
+- **Route-level error boundaries** via React Router's `errorElement`. A `RouteErrorFallback` reads `useRouteError()` and renders message + retry.
+- **Component-level error boundaries** (`react-error-boundary` or DIY) around isolated risky regions (charts, third-party widgets). Specific, not blanket.
+- **Suspense + `useSuspenseQuery`** pairs cleanly for declarative loading states once nested orchestration gets fiddly. For v0, plain `useQuery` with `isPending` / `error` checks is fine.
 
 ## Testing
 
-- **Vitest** + **React Testing Library**.
-- Test files live next to source: `Foo.tsx` → `Foo.test.tsx`.
-- Test behavior, not implementation: render, interact via `userEvent`, assert on what the user sees.
-- Mock the generated Connect client at the module boundary, not individual TanStack Query hooks.
-- Don't test trivial code (pure render-only components, simple selectors).
+- Test files co-located: `Foo.tsx` → `Foo.test.tsx`.
+- Test behavior, not implementation. Render, interact via `userEvent`, assert via `getByRole` / `getByLabelText`. `getByTestId` is last resort.
+- **Mock at the transport boundary.** Either MSW (HTTP interception, good for realistic network behavior) or `createRouterTransport` from `@connectrpc/connect` (typed handlers, faster for unit tests). **Never `vi.mock` generated Connect-Query hooks** — it bypasses the contract.
+- Build a `renderWithProviders` helper that wraps in `TransportProvider` + `QueryClientProvider`.
+- Don't test trivial render-only components or generated code. Snapshot tests are a smell for anything that changes often.
 
-## File conventions
+## Conventions
 
-- **Components**: `PascalCase.tsx`, default export.
-- **Pages**: `XxxPage.tsx` in `src/pages/`.
-- **Hooks**: `useXxx.ts` in `src/hooks/`.
-- **API wrappers**: `src/api/<domain>.ts` exporting query keys + hooks.
-- **Constants**: `SCREAMING_SNAKE_CASE` exports.
+- Files: `PascalCase.tsx` for components (default export), `useXxx.ts` for hooks, `XxxPage.tsx` for pages, `src/api/<domain>.ts` for API wrappers.
+- Constants: `SCREAMING_SNAKE_CASE`.
+- Path alias `@/*` → `src/*` is the *target* but not yet wired (needs `tsconfig.app.json` paths + `vite.config.ts` `resolve.alias` + `@types/node`). Until then, relative imports are fine in the small scaffold tree.
+- Env vars prefixed `VITE_*`; ship in the bundle so never put real secrets there.
 
-## Imports
+## Anti-patterns
 
-- **Intended convention**: absolute imports via `@/*` alias (e.g. `import { useEmailList } from '@/api/email'`). The alias requires `paths` in `tsconfig.app.json` *and* a matching `resolve.alias` in `vite.config.ts` *and* `@types/node` for the typical `fileURLToPath` setup — wire all three when the first hand-written import lands. Until then, relative imports are fine for the small scaffold tree.
-- **Generated code**: once codegen runs, import from the generated module paths (e.g. `@/gen/...` after the alias is set up). Never copy generated types into hand-written files.
-
-## Environment variables
-
-- Prefixed `VITE_*` (Vite convention). Files: `.env`, `.env.local` (gitignored), `.env.production`.
-- Client-side env vars ship in the bundle — never put true secrets here. OAuth client ID is fine (it's public by design); API keys for paid third-party services are not.
-
-## Anti-patterns to avoid
-
-- Fetching data in `useEffect` when a TanStack Query hook would do.
-- Storing server state in React Context or `useState` (use TanStack Query).
-- Calling generated Connect clients directly from components — go through `src/api/`.
-- Raw `fetch` / `axios` to the backend — the only path is Connect.
-- `any` or `@ts-nocheck` to silence type errors.
-- Adding a new state library (Redux, Zustand, Jotai) — re-evaluate why TanStack Query + local state isn't enough first.
-- Importing from `src/gen/` in test files — mock at the Connect client boundary.
-- Mixing Mantine with Tailwind, styled-components, emotion, or another styling system — pick one stack and stay in it.
-- Using `@mantine/form` instead of react-hook-form + Zod — see Forms above.
-- Re-implementing a Mantine primitive (custom `Button`, custom `Modal`) when the Mantine one works with a `theme` override.
-- Hardcoding colors / spacing / font sizes in component files when theme tokens or `rem` units exist.
+- Fetching in `useEffect` when a Connect-Query hook works.
+- Server state in Context or `useState`.
+- Components calling generated Connect clients directly — go through `src/api/`.
+- Raw `fetch` / `axios` to the backend.
+- `any` / `@ts-nocheck` / `@ts-ignore` / `React.FC`.
+- New state libraries (Redux, Zustand, Jotai).
+- `vi.mock` on Connect-Query hooks (mock the transport).
+- Mixing Mantine with Tailwind / styled-components / emotion / Sass.
+- `@mantine/form` (use react-hook-form).
+- Re-implementing a Mantine primitive that's themable.
+- Hardcoded colors / spacing / `px` — use theme tokens + `rem`.
+- 8+ boolean props on a shared component — redesign as composition.
+- Promoting to `src/components/` for hypothetical future reuse.
+- Prop drilling > 2 levels.
+- Memoizing by reflex.
+- Effects synchronizing derived state (compute during render).
+- `ActionIcon` without `aria-label`.

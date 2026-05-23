@@ -15,7 +15,6 @@ grpcJava                = "1.74.0"
 grpcKotlin              = "1.4.3"
 protobuf                = "4.32.0"
 protobufPlugin          = "0.9.5"
-mapstruct               = "1.6.3"
 liquibase               = "4.32.0"
 liquibaseGroovyDsl      = "4.0.0"
 postgresJdbc            = "42.7.7"
@@ -53,10 +52,6 @@ postgres-jdbc                       = { module = "org.postgresql:postgresql", ve
 liquibase-core                      = { module = "org.liquibase:liquibase-core", version.ref = "liquibase" }
 liquibase-groovyDsl                 = { module = "org.liquibase:liquibase-groovy-dsl", version.ref = "liquibaseGroovyDsl" }
 
-# Mapping
-mapstruct                           = { module = "org.mapstruct:mapstruct", version.ref = "mapstruct" }
-mapstruct-processor                 = { module = "org.mapstruct:mapstruct-processor", version.ref = "mapstruct" }
-
 # Kotlin
 kotlin-reflect                      = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }
 kotlin-stdlib                       = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
@@ -75,7 +70,6 @@ testcontainers-postgres             = { module = "org.testcontainers:postgresql"
 kotlin-jvm                          = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-spring                       = { id = "org.jetbrains.kotlin.plugin.spring", version.ref = "kotlin" }
 kotlin-jpa                          = { id = "org.jetbrains.kotlin.plugin.jpa", version.ref = "kotlin" }
-kotlin-kapt                         = { id = "org.jetbrains.kotlin.kapt", version.ref = "kotlin" }
 springBoot                          = { id = "org.springframework.boot", version.ref = "springBoot" }
 springDepMgmt                       = { id = "io.spring.dependency-management", version.ref = "springDepMgmt" }
 protobuf                            = { id = "com.google.protobuf", version.ref = "protobufPlugin" }

@@ -2,32 +2,24 @@
 
 Shared guidance for Kotlin code. Imported by `server/CLAUDE.md` (and any future Kotlin module).
 
-## Tech baseline
-
-- Kotlin 2.2.x
-- JDK 21+ (Spring Boot 4 minimum); local toolchain currently 23 per scaffold notes
-- Compiler args: `-Xjsr305=strict` (treat JSR-305 nullability annotations as errors)
+Kotlin 2.2.x, JDK 21+ (local toolchain 23 per scaffold), `-Xjsr305=strict`.
 
 ## Code style
 
-- **ktlint + detekt** enforced in CI. Run locally before pushing:
-  ```
-  ./gradlew :server:ktlintCheck :server:detekt
-  ./gradlew :server:ktlintFormat   # auto-fix
-  ```
-- Prefer imports over inline fully-qualified names.
-- Files end with a trailing newline.
-- Use the `compilerOptions { ... }` DSL in Gradle (Kotlin 2.x); the older `kotlinOptions { ... }` is deprecated.
+ktlint + detekt enforced in CI: `./gradlew :server:ktlintCheck :server:detekt`; auto-fix with `:server:ktlintFormat`. Files end with a trailing newline. Gradle uses `compilerOptions { }` (Kotlin 2.x); older `kotlinOptions { }` is deprecated.
 
 ## Idioms
 
-- **Data classes** for DTOs. No setters; use `copy()` for mutation-by-derivation.
+- **Data classes** for DTOs. No setters; use `copy()` for derivation. Don't add behavior to data classes — keep them dumb.
 - **Constructor injection** everywhere — no `@Autowired` field injection, no `lateinit var` for dependencies.
 - **Immutable by default**: `val` over `var`, `List` / `Map` over their mutable variants in public APIs. Reach for `MutableList` only inside a function body where the build pattern is genuinely clearer.
-- **Null safety**: model nullability in types, not via `!!`. A `!!` is a code smell — if the value is guaranteed non-null, return type should say so; if it isn't, handle the null case explicitly.
+- **Null safety**: model nullability in types, not via `!!`. A `!!` is a code smell — if the value is guaranteed non-null, the return type should say so; if it isn't, handle the null case explicitly.
+- **Sealed classes / sealed interfaces** for modeling discriminated states (success/failure, loaded/loading/error, an enum-like type that needs per-variant data). The compiler enforces `when` exhaustiveness when the result is used as an expression. Prefer sealed types over throwing exceptions for *expected* alternative outcomes.
 - **Scope functions** (`let`, `also`, `apply`, `run`, `with`) — use them where they clarify intent, not as a habit. `apply` for builder-style configuration; `let` for null-safe transforms; `also` for side effects in a chain.
 - **Extension functions** when they make a call site read more naturally. Don't extend types you don't own with project-specific behavior — wrap, don't extend.
 - **`when` exhaustiveness** for sealed types and enums. The compiler enforces it when `when` is used as an expression; prefer that form when you want the check.
+- **`value class`** (formerly inline class) for type-safe primitive wrappers — `value class TenantId(val value: UUID)` makes "tenant id" a distinct type from "any old UUID" at compile time with zero runtime cost. Use sparingly; only where a primitive being passed to the wrong parameter would actually be a bug.
+- **`Result<T>` / `runCatching`** — useful for *expected* failure paths at API boundaries (parsing, external calls). Don't use them for control flow inside the service layer where exceptions are clearer.
 
 ## Visibility
 
@@ -35,12 +27,11 @@ Shared guidance for Kotlin code. Imported by `server/CLAUDE.md` (and any future 
 
 ## Coroutines
 
-Not introduced in v0. Spring's `@Async`, `@Scheduled`, and JPA transactional boundaries are blocking by design. If a future feature genuinely needs structured concurrency, surface the case before pulling `kotlinx.coroutines` in — it interacts with `@Transactional` propagation in non-obvious ways.
+v0 is uniformly blocking (gRPC → service → JDBC). Don't introduce `kotlinx.coroutines` — Spring 6+ supports them well, but mixing suspending and blocking JPA creates surprise edges. If a real fan-out need appears, surface it explicitly.
 
-## Anti-patterns to avoid
+## Anti-patterns
 
-- `!!` operators in production code (test fixtures may use them sparingly when the test setup guarantees non-null).
-- `lateinit var` on dependency-injected fields — use constructor injection.
+- `!!` in production (test fixtures sparingly OK when setup guarantees non-null).
 - Top-level mutable global state (`var` at file or `object` level).
-- Hand-rolling builders when a data class + `copy()` suffices.
-- Using `Any?` to dodge type design — make the type explicit.
+- Hand-rolled builders when `copy()` suffices.
+- `Any?` to dodge type design.

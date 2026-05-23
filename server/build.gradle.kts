@@ -1,11 +1,10 @@
 // :server — the Spring Boot application. gRPC + HTTP server, JPA persistence,
-// Liquibase migrations, MapStruct conversions, feature-by-package layout.
+// Liquibase migrations, Kotlin extension-function boundary mappers, feature-by-package layout.
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.spring)
     alias(libs.plugins.kotlin.jpa)
-    alias(libs.plugins.kotlin.kapt)
     alias(libs.plugins.springBoot)
     alias(libs.plugins.springDepMgmt)
     alias(libs.plugins.detekt)
@@ -53,10 +52,6 @@ dependencies {
     runtimeOnly(libs.postgres.jdbc)
     implementation(libs.liquibase.core)
     implementation(libs.liquibase.groovyDsl)
-
-    // MapStruct — boundary-layer conversions (proto ↔ service DTO, service DTO ↔ entity)
-    implementation(libs.mapstruct)
-    kapt(libs.mapstruct.processor)
 
     // Kotlin
     implementation(libs.kotlin.reflect)

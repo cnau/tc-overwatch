@@ -1,17 +1,14 @@
 # Protobuf & gRPC Conventions
 
-Shared guidance for the proto-first API. Imported by `proto/CLAUDE.md` and `server/CLAUDE.md` (for the controller side).
+Proto-first: `.proto` files in `proto/src/main/proto/com/tcoverwatch/<package>/` are the contract. Backend Kotlin/Java stubs come from the Gradle protobuf plugin (`:proto` is a Gradle dep of `:server`). Frontend TS stubs come from `buf generate` into `frontend/src/gen/` using:
 
-## Tech baseline
+- `buf.build/bufbuild/es` — message types
+- `buf.build/connectrpc/es` — Connect client classes
+- `buf.build/connectrpc/query-es` — TanStack Query hooks per RPC (add when Connect-Query lands, see `react.md`)
 
-- `.proto` files in `proto/src/main/proto/com/tcoverwatch/<package>/` — single source of truth.
-- **Backend stubs** (Kotlin/Java) come from the Gradle protobuf plugin in `proto/build.gradle.kts`. The `:proto` module is a regular Gradle dependency of `:server`.
-- **Frontend stubs** (TypeScript Connect-ES + Connect client) come from Buf (`buf generate`) — config in `buf.gen.yaml`, output to `frontend/src/gen/`.
-- **Buf** governs linting and breaking-change detection — config in `buf.yaml`. Lint uses the `STANDARD` rule set (one exception: `PACKAGE_VERSION_SUFFIX` is disabled because we already use `v1`).
+Buf governs lint + breaking-change. `STANDARD` lint, `PACKAGE_VERSION_SUFFIX` disabled (we keep `v1`).
 
-## Why proto-first
-
-The proto contract is the explicit boundary between backend and frontend, which deploy independently (`docs/architecture.md` § Frontend deployment). A change that compiles on the backend but breaks the frontend client *should* fail in CI before anything ships — that's what Buf's breaking-change check is for. Treat `.proto` edits as contract changes, not implementation details.
+Treat `.proto` edits as contract changes — backend and frontend deploy independently (`architecture.md` § Frontend deployment); Buf's breaking-change check is what stops a frontend-breaking proto from shipping.
 
 ## Commands
 
@@ -38,6 +35,21 @@ buf generate             # regenerate frontend TS clients into frontend/src/gen/
 - **Enums**: every enum has a `UNSPECIFIED = 0` value (Buf enforces this). Treat `UNSPECIFIED` as "sender didn't set this" and handle it explicitly.
 - **Timestamps**: `google.protobuf.Timestamp`. Don't pass timestamps as strings on the wire — the wire format is the canonical form.
 - **IDs**: `string` for UUIDs (the proto wire type for stringified UUIDs); the backend service-DTO can use Kotlin's `java.util.UUID`. Mapper converts at the boundary.
+
+## Errors
+
+Connect uses gRPC status codes on the wire — clients receive them as a `ConnectError` with a `Code` enum value (`unauthenticated`, `permission_denied`, `not_found`, `invalid_argument`, `failed_precondition`, etc.).
+
+- **Backend**: throw domain exceptions; the gRPC controller advisor maps them to specific `Status` codes. Don't return error-as-payload (`oneof { result, error }`) for predictable failures — use Connect's error channel.
+- **Status code conventions**:
+  - `INVALID_ARGUMENT` — request shape valid but values don't pass business rules.
+  - `NOT_FOUND` — resource lookup miss.
+  - `ALREADY_EXISTS` — uniqueness violation.
+  - `FAILED_PRECONDITION` — request is invalid in the current state (closed transaction, expired invite).
+  - `PERMISSION_DENIED` — authenticated but lacks rights.
+  - `UNAUTHENTICATED` — no/invalid session.
+- **Frontend**: catch `ConnectError`, switch on `code`. Don't parse error messages — codes are the contract.
+- **Error details**: when a structured payload is needed beyond a code + message, attach a Connect error detail message defined in proto. This is the proper escape hatch — string parsing is not.
 
 ## Breaking changes
 
