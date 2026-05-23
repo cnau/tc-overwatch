@@ -40,11 +40,30 @@ Strict layering: **Controller → Service → DAO → Repository**. Each layer h
 | **DAO** | Service DTOs | Service DTOs | Wraps Spring Data repository; converts service DTOs ↔ JPA entities. **Hibernate entities never escape this layer.** |
 | **Repository** | JPA entities | JPA entities | Pure Spring Data JPA interface |
 
-Rationale: the wire format, the business model, and the persistence model evolve at different rates. Coupling them means a DB schema change ripples through the API contract; decoupling them confines change. The cost is more types and more mapping code — paid by MapStruct, not by hand.
+Rationale: the wire format, the business model, and the persistence model evolve at different rates. Coupling them means a DB schema change ripples through the API contract; decoupling them confines change. The cost is more types and more mapping code — paid by **Kotlin extension functions** (see below), not by hand-rolled imperative converters or annotation-processor magic.
 
-### MapStruct for conversions
+### Kotlin extension-function mappers at boundaries
 
-**MapStruct** generates the mappers at every layer boundary (proto ↔ service DTO at the controller; service DTO ↔ entity at the DAO). Hand-rolled converters between these layers are a code smell — use MapStruct unless there's a specific reason not to (genuinely complex enrichment that's clearer as straight code).
+Two boundary mappings exist: proto ↔ service DTO at the controller, and entity ↔ service DTO at the DAO. Both are implemented as **top-level Kotlin extension functions** co-located with the target type:
+
+```kotlin
+// feature/foo/api/FooProtoMapper.kt
+internal fun FooRequest.toServiceRequest(): ServiceFooRequest = ServiceFooRequest(...)
+internal fun ServiceFooResponse.toProtoResponse(): FooResponse = FooResponse.newBuilder()...build()
+
+// feature/foo/persistence/FooEntityMapper.kt
+internal fun ServiceFooRequest.toEntity(): FooEntity = FooEntity(...)
+internal fun FooEntity.toServiceResponse(): ServiceFooResponse = ServiceFooResponse(...)
+```
+
+Why extension functions, explicitly **not MapStruct**:
+
+- Kotlin already has the language features MapStruct compensates for in Java — named arguments, data-class `copy()`, immutable constructors, null safety in the type system.
+- No `kapt` annotation processor in the build → faster incremental compiles, no generated-source surprise, no "Unmapped target properties" warnings on proto builders, no `@Mapping(expression = "java(...)")` escape hatches.
+- The mapping is *the code* — readable in the diff, debuggable like any function, trivially testable without `Mappers.getMapper(...)` boilerplate.
+- Extension functions don't need to be Spring beans → the DAO and controller don't carry a mapper field; they just call `dto.toEntity()` / `request.toServiceRequest()`.
+
+Discipline: if a mapping is genuinely tedious (50+ fields, multi-source enrichment), it's signalling that the *types* are wrong, not that you need MapStruct — split the DTO or simplify the mapping target.
 
 ### gRPC integration
 
@@ -135,11 +154,13 @@ Full proto definitions are TBD as implementation begins.
 
 **React + TypeScript + Vite**.
 
-- **State + data fetching**: TanStack Query on top of generated Connect-ES clients. The cache key is the RPC method + request; mutations invalidate relevant queries.
-- **UI primitives**: Tailwind CSS + shadcn/ui (or equivalent — open).
-- **Routing**: React Router.
-- **Forms**: react-hook-form (or alternative — open).
+- **State + data fetching**: **Connect-Query** (`@connectrpc/connect-query`) on top of TanStack Query v5+. Connect-Query auto-generates `useQuery` / `useMutation` hooks per RPC from the proto schema — query keys are managed automatically. Manual `createPromiseClient` + hand-written hooks remain a fallback for cases Connect-Query can't express (streaming, custom cache shaping).
+- **UI primitives**: **Mantine v8+** — hooks-first, TypeScript-first component library. Ships finished primitives (modals, drawers, dialogs, date pickers, notifications, dropzone, etc.). Theme + CSS variables; no required CSS-in-JS (Mantine 7 dropped emotion, Mantine 8 continued the pure-CSS direction). Mantine's own form package (`@mantine/form`) is intentionally **not** used — see Forms below.
+- **Routing**: React Router v6.4+ with the Data Router (`createBrowserRouter`, route loaders, `errorElement`).
+- **Forms**: **react-hook-form + Zod** (via `@hookform/resolvers/zod`). Mantine inputs wired via react-hook-form's `Controller`; thin per-input wrappers (`RhfTextInput`, `RhfSelect`) hide the Controller boilerplate once N>1 forms exist. Backend service-DTO shape is the source of truth; Zod schemas on the frontend mirror it for client-side validation.
 - The frontend never talks to Gmail or any external service directly; all data flows through the gRPC API.
+
+**Why Mantine over shadcn/ui or MUI** — solo developer, less React-fluent, small v0 surface, B2B SaaS (not a design-forward consumer product). Mantine ships finished components and stays as an npm dependency that can be `npm update`d, instead of either (a) requiring assembly of headless primitives (shadcn copies source into the repo — more code to own) or (b) imposing the Material aesthetic (MUI). Aesthetic is clean and doesn't read as Google/Material. If the SaaS grows past v0 and a custom design system becomes important, Mantine can be re-themed deeply before any migration is needed.
 
 ## Background jobs
 
@@ -524,8 +545,8 @@ These are implementation choices to make at code-writing time, not in this doc:
 - US-address parser library
 - Fuzzy-match library (string distance / token set ratio)
 - Phone normalization library (likely `libphonenumber` since it's industry standard)
-- React UI component library specifics (shadcn/ui, Mantine, others)
-- Form library specifics
+- Mantine sub-packages to pull in (`@mantine/dates`, `@mantine/notifications`, `@mantine/modals`, etc. land as features need them)
+- Whether to layer `mantine-react-table` (TanStack Table wrapper) for advanced data grids, or stick with Mantine's basic `Table` component — defer until a real grid requirement appears
 - Test framework choices (JUnit 5 + MockK + Testcontainers are the safe bets for backend; Vitest + React Testing Library for frontend)
 
 ## Watch items (Spring Boot 4 specifically)
@@ -543,6 +564,5 @@ Mitigation: pin to specific Spring Boot 4–compatible versions where they exist
 Things discovered while building the initial scaffold that are worth remembering:
 
 - **JDK toolchain**: the `org.gradle.toolchains.foojay-resolver-convention` plugin at version `0.10.0` has a known bug with Gradle 9.5.1 (throws `"IBM_SEMERU"` when attempting auto-download). Workaround used: rely on a locally-installed JDK (Java 23 on the dev machine) by setting the toolchain to `JavaLanguageVersion.of(23)` in both module build files. Revisit when foojay ships a fix or when JDK 21 is installed locally for stricter version alignment.
-- **Kotlin `internal` visibility on persistence classes**: cannot mark `PingEntity` / `PingRepository` / `PingEntityMapper` as `internal` because the public `PingDao` (called from the service layer) takes them as constructor parameters — a public function cannot expose an internal type. The "entities don't leak from DAOs" architectural principle is therefore **enforced by code review** (DAOs return DTOs, not entities) rather than by the Kotlin compiler. If stricter enforcement is desired later, options are: (a) make the entire `feature.<name>.persistence` package internal including the DAO, with the DAO consumed within the same module only (matches the current single-module layout); or (b) extract a `persistence-api` interface that's public and a private implementation. Neither is in v0 scope.
-- **MapStruct + proto-builder warning**: `PingProtoMapper` is currently a hand-rolled Kotlin class (not MapStruct) because proto messages use a builder pattern that surfaces a `Unmapped target properties` warning for all the builder-internal methods (`mergeFrom`, `clearField`, etc.). When migrating to MapStruct, add `@BeanMapping(ignoreUnmappedTargetProperties = true)` or explicit `@Mapping(target = "X", ignore = true)` for each.
+- **Kotlin `internal` visibility on persistence classes**: cannot mark `PingEntity` / `PingRepository` as `internal` because the public `PingDao` (called from the service layer) takes them as constructor parameters — a public function cannot expose an internal type. The "entities don't leak from DAOs" architectural principle is therefore **enforced by code review** (DAOs return DTOs, not entities) rather than by the Kotlin compiler. If stricter enforcement is desired later, options are: (a) make the entire `feature.<name>.persistence` package internal including the DAO, with the DAO consumed within the same module only (matches the current single-module layout); or (b) extract a `persistence-api` interface that's public and a private implementation. Neither is in v0 scope. Extension-function mappers themselves can stay `internal` since they're not Spring beans and aren't consumed by upstream layers.
 - **CI lint steps**: `.github/workflows/ci.yml` has `continue-on-error: true` on the `ktlintCheck`/`detekt` and frontend `npm run lint` steps. Remove these flags once the first clean lint pass is achieved.

@@ -11,24 +11,21 @@ import net.devh.boot.grpc.server.service.GrpcService
 // gRPC controller — wire-format entry point for the PingService RPC.
 //
 // Responsibilities per layering rules:
-//   - Convert proto request -> service DTO (via PingProtoMapper).
+//   - Convert proto request -> service DTO (via the toServiceRequest extension).
 //   - Apply *shape* validation only (no DB queries here).
 //   - Delegate business logic to PingService.
-//   - Convert service DTO -> proto response.
+//   - Convert service DTO -> proto response (via the toProtoResponse extension).
 //   - Never returns or accepts JPA entities — those are confined to the persistence layer.
 @GrpcService
 class PingRpcController(
     private val pingService: PingService,
-    private val protoMapper: PingProtoMapper,
 ) : PingServiceGrpc.PingServiceImplBase() {
 
     override fun ping(request: PingRequest, responseObserver: StreamObserver<PingResponse>) {
         try {
             validateShape(request)
-            val serviceRequest = protoMapper.toServiceRequest(request)
-            val serviceResponse = pingService.ping(serviceRequest)
-            val protoResponse = protoMapper.toProtoResponse(serviceResponse)
-            responseObserver.onNext(protoResponse)
+            val serviceResponse = pingService.ping(request.toServiceRequest())
+            responseObserver.onNext(serviceResponse.toProtoResponse())
             responseObserver.onCompleted()
         } catch (e: IllegalArgumentException) {
             responseObserver.onError(
