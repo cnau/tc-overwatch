@@ -43,7 +43,7 @@ Requires **JDK 21+** (Spring Boot 4 minimum; the current scaffold pins to JDK 23
 # 1. Start local Postgres + role setup
 docker compose -f docker-compose.local.yml up -d
 
-# 2. Run the server (gRPC on :9090, HTTP on :8080)
+# 2. Run the server (gRPC-Web + HTTP on :8080, single port via spring-grpc-server-web)
 ./gradlew :server:bootRun --args='--spring.profiles.active=local'
 
 # 3. In a separate terminal: run the frontend dev server
@@ -51,7 +51,7 @@ cd frontend && npm install && npm run dev
 # → http://localhost:5173
 ```
 
-The Vite dev server proxies `/rpc/*` to `localhost:9090` (gRPC) and `/oauth/*` + `/api/*` to `localhost:8080` (HTTP), so the browser sees same-origin during development — no CORS needed locally.
+The Vite dev server proxies `/rpc/*`, `/oauth/*`, and `/api/*` to `localhost:8080` so the browser sees same-origin during development — no CORS needed locally. spring-grpc-server-web bridges gRPC handlers to the Spring MVC servlet on the same port.
 
 ## Status
 

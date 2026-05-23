@@ -42,9 +42,13 @@ dependencies {
     implementation(libs.springBoot.starter.actuator)
     implementation(libs.springBoot.starter.validation)
 
-    // gRPC server starter — wraps grpc-java in Spring conventions. Watch item: confirm
-    // Spring Boot 4 compatibility at first build; fall back to direct grpc-java config if not.
-    implementation(libs.grpc.springStarter.server)
+    // Spring-grpc (official Spring starter, replaces net.devh). The `server` starter speaks
+    // native gRPC over HTTP/2 (port 9090, grpcurl-compatible). The `server-web` starter speaks
+    // gRPC-Web over Spring MVC's HTTP/1.1 server (port 8080, browser-compatible). Same proto
+    // handlers serve both — exactly the architecture.md target.
+    implementation(platform(libs.springGrpc.dependencies.bom))
+    implementation(libs.springGrpc.server.starter)
+    implementation(libs.springGrpc.server.web.starter)
     implementation(libs.grpc.services) // reflection, health checks
     runtimeOnly(libs.grpc.netty.shaded)
 

@@ -57,7 +57,7 @@ const labelEmail = useMutation(label, {
 })
 ```
 
-App wraps in `<TransportProvider transport={transport}><QueryClientProvider client={queryClient}>...</...>...</...>`. Transport: `createConnectTransport({ baseUrl: '/rpc', credentials: 'include' })` — `credentials: 'include'` attaches the session cookie (cross-origin in prod, see `architecture.md` § CORS). Vite proxy maps `/rpc/*` → backend in dev.
+App wraps in `<TransportProvider transport={transport}><QueryClientProvider client={queryClient}>...</...>...</...>`. Transport: **`createGrpcWebTransport({ baseUrl: '/rpc', credentials: 'include' })`** — the backend (`spring-grpc-server-web`) speaks gRPC-Web, not native Connect protocol, so use the gRPC-Web transport factory. `credentials: 'include'` attaches the session cookie (cross-origin in prod, see `architecture.md` § CORS). Vite proxy maps `/rpc/*` → backend `:8080` in dev.
 
 **Manual fallback**: only when Connect-Query can't express the case (streaming, custom cache shapes). Wrap `createPromiseClient` in a `useFoo` hook in `src/api/<domain>.ts`. Components never call generated clients directly.
 

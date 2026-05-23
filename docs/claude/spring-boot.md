@@ -2,7 +2,7 @@
 
 Operational guidance for the backend. Strategy lives in `architecture.md` § Backend (locked-in defaults, layered DTOs, Kotlin extension-function mappers, RLS, three Postgres roles, two-layer validation). This file = how to write code that respects those decisions.
 
-Stack: Spring Boot 4 + Kotlin 2.2 + JDK 21+, gRPC via `net.devh` starter, JPA/Hibernate, Liquibase (Groovy DSL — see `liquibase.md`), JUnit 5 + MockK + AssertK + Testcontainers.
+Stack: Spring Boot 4 + Kotlin 2.2 + JDK 21+, gRPC via Spring's official **`spring-grpc`** starter (gRPC-Web served from the Spring MVC servlet on :8080 — single port for both gRPC clients and browser Connect-Web), JPA/Hibernate, Liquibase (Groovy DSL — see `liquibase.md`), JUnit 5 + MockK + AssertK + Testcontainers.
 
 ## Layer boundaries
 

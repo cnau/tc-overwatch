@@ -23,15 +23,20 @@ spring:
   jackson:
     default-property-inclusion: non_null
 
+  # spring-grpc serves gRPC over the Spring MVC servlet on :8080 (same port as HTTP) when
+  # spring-grpc-server-web is on the classpath. Same proto handlers serve native gRPC clients
+  # (grpcurl via h2c) AND browser gRPC-Web / Connect through one endpoint. Native-only mode
+  # (separate :9090 port) is not used — single-port keeps deployment, CORS, and proxy config
+  # simpler. Reflection auto-enabled for grpcurl convenience.
+  grpc:
+    server:
+      reflection:
+        enabled: true
+
 server:
   port: 8080
   servlet:
     context-path: /
-
-# gRPC server (separate port from the HTTP server)
-grpc:
-  server:
-    port: 9090
 
 management:
   endpoint:

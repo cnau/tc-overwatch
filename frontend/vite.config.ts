@@ -3,21 +3,23 @@ import react from '@vitejs/plugin-react'
 
 // Vite dev-server config.
 //
-// The `/rpc` proxy forwards Connect-ES (gRPC-Web) calls to the backend in
-// development so the browser sees same-origin (no CORS in dev). In production
-// the frontend talks to the backend by its public hostname and CORS handles
-// it (see docs/architecture.md § CORS and cross-origin sessions).
+// spring-grpc serves gRPC (and gRPC-Web / Connect for browsers) over the Spring MVC
+// servlet on :8080 — single port, same handlers, both wire formats. So `/rpc/*`
+// forwards to :8080 and gets rewritten to drop the `/rpc` prefix; the backend sees
+// the canonical gRPC service path (e.g. `/com.tcoverwatch.v1.PingService/Ping`).
 //
-// When Connect-ES codegen is wired up, configure the transport with
-// `createConnectTransport({ baseUrl: '/rpc' })` so calls hit /rpc/... and
-// route through this proxy in dev.
+// In production the frontend talks to the backend by its public hostname and CORS
+// handles cross-origin cookies (see docs/architecture.md § CORS).
+//
+// When Connect-Query codegen lands, the transport is configured with
+// `createConnectTransport({ baseUrl: '/rpc', credentials: 'include' })`.
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
     proxy: {
       '/rpc': {
-        target: 'http://localhost:9090',
+        target: 'http://localhost:8080',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/rpc/, ''),
       },
