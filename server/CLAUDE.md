@@ -31,10 +31,9 @@ Local dev assumes Postgres is up via `docker compose -f docker-compose.local.yml
 
 ## Ports
 
-- **9090** — gRPC + Connect (the main API).
-- **8080** — HTTP (OAuth callback, `/api/auth/*`, `/actuator/health`).
+- **8080** — Spring MVC servlet. Serves both **gRPC-Web** (the main API, at `/com.tcoverwatch.<feature>.v<N>.<Service>/<Method>`) and the small HTTP surface (OAuth callback, `/api/auth/*`, `/actuator/health`). Single port, single process — spring-grpc-server-web bridges gRPC handlers to the servlet via `grpc-servlet-jakarta`.
 
-The Vite dev server proxies `/rpc/*` → 9090 and `/oauth/*` + `/api/*` → 8080, so the browser sees same-origin during local dev.
+The Vite dev server proxies `/rpc/*` → backend `/` and `/oauth/*` + `/api/*` → `/`, so the browser sees same-origin during local dev. `grpcurl -plaintext localhost:8080 ...` also works against the same endpoint via h2c.
 
 ## Spring profiles
 

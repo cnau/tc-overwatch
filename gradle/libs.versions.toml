@@ -1,16 +1,10 @@
 # Centralized version catalog. All module build files reference these via `libs.*`.
-#
-# Watch items (bleeding edge): Spring Boot 4 was very recently GA. Some third-party
-# Spring starters (notably net.devh's gRPC starter) historically lag major releases by
-# 3-6 months. If a referenced version below does not resolve at build time, options are
-# to pin to a known-compatible release, switch to direct grpc-java without a Spring
-# starter (more boilerplate), or downgrade Spring Boot to 3.x temporarily.
 
 [versions]
 kotlin                  = "2.2.0"
 springBoot              = "4.0.6"
 springDepMgmt           = "1.1.7"
-grpcSpringStarter       = "3.1.0.RELEASE"   # net.devh — confirm SB4 support at first build
+springGrpc              = "1.0.3"            # Spring's official gRPC starter (replaces net.devh)
 grpcJava                = "1.74.0"
 grpcKotlin              = "1.4.3"
 protobuf                = "4.32.0"
@@ -35,9 +29,10 @@ springBoot-starter-actuator         = { module = "org.springframework.boot:sprin
 springBoot-starter-validation       = { module = "org.springframework.boot:spring-boot-starter-validation" }
 springBoot-starter-test             = { module = "org.springframework.boot:spring-boot-starter-test" }
 
-# gRPC
-grpc-springStarter-server           = { module = "net.devh:grpc-server-spring-boot-starter", version.ref = "grpcSpringStarter" }
-grpc-springStarter-client           = { module = "net.devh:grpc-client-spring-boot-starter", version.ref = "grpcSpringStarter" }
+# gRPC — Spring's official starter speaks both native gRPC (HTTP/2) and gRPC-Web (HTTP/1.1) from the same handlers
+springGrpc-dependencies-bom         = { module = "org.springframework.grpc:spring-grpc-dependencies", version.ref = "springGrpc" }
+springGrpc-server-starter           = { module = "org.springframework.grpc:spring-grpc-server-spring-boot-starter" }
+springGrpc-server-web-starter       = { module = "org.springframework.grpc:spring-grpc-server-web-spring-boot-starter" }
 grpc-protobuf                       = { module = "io.grpc:grpc-protobuf", version.ref = "grpcJava" }
 grpc-stub                           = { module = "io.grpc:grpc-stub", version.ref = "grpcJava" }
 grpc-services                       = { module = "io.grpc:grpc-services", version.ref = "grpcJava" }

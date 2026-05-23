@@ -67,7 +67,7 @@ Discipline: if a mapping is genuinely tedious (50+ fields, multi-source enrichme
 
 ### gRPC integration
 
-`net.devh:grpc-spring-boot-starter` wraps grpc-java in Spring conventions when a Spring Boot 4–compatible release is available. **Fallback** if not: direct grpc-java with manual Spring wiring — more boilerplate but unblocks the build. Decision pinned at first commit when the dependency tree is resolved.
+Spring's official **`spring-grpc`** starter (`org.springframework.grpc:spring-grpc-server-spring-boot-starter` + `spring-grpc-server-web-spring-boot-starter`). Handlers are annotated `@GrpcService` (from `org.springframework.grpc.server.service`) and served over the Spring MVC servlet via `grpc-servlet-jakarta`. Same port (8080) for both gRPC clients and the small HTTP surface; native gRPC on a separate :9090 is *not* used.
 
 ### Authentication / Security
 
@@ -93,7 +93,7 @@ Single Postgres, every tenant-scoped table carries `tenant_id` (UUID, NOT NULL).
 
 ### HTTP surface (in addition to the gRPC surface)
 
-The Spring Boot process exposes **both** a gRPC server (the main application API, on its own port via `net.devh`) and an HTTP server (Spring MVC, default port 8080). The HTTP surface is small and deliberate:
+The Spring Boot process exposes a single Spring MVC servlet on port 8080 that serves **both** gRPC handlers (via `spring-grpc-server-web` + `grpc-servlet-jakarta`) and the small HTTP surface. The HTTP surface is small and deliberate:
 
 - **`/oauth/callback`** — Google OAuth redirect target. Spring MVC `@RestController` that exchanges the `code` for tokens, encrypts the refresh token, creates a session, and issues a 302 to the frontend SPA's root URL with the session cookie set.
 - **`/api/auth/*`** — any other HTTP-only auth endpoints (logout, session refresh) as needed.
@@ -132,22 +132,17 @@ Bearer tokens (issued at OAuth-callback time, stored in frontend memory, sent on
 
 Cookies win for v0 because the auth complexity is centralized in the backend and the parent-domain requirement is a one-time DNS decision. Revisit if SaaS goes mobile (where bearer tokens are friendlier) or if a security review demands it.
 
-## API — gRPC + Connect
+## API — gRPC + gRPC-Web
 
 The API is **proto-first**. `.proto` files in `proto/` are the single source of truth; they generate both backend stubs (Kotlin) and frontend clients (TypeScript).
 
-- **Server today**: `net.devh:grpc-server-spring-boot-starter` serves **plain gRPC over HTTP/2 only.** Verified end-to-end via `grpcurl` against the `PingService` smoke test. **The browser cannot reach this server directly** — see *Open gap: browser-callable transport* below.
-- **Target server posture**: speak gRPC (HTTP/2) *and* Connect/gRPC-Web from the same handler implementations. Path-to-target options on the table: add a gRPC-Web servlet filter, run an Envoy / `grpcwebproxy` sidecar, or migrate off `net.devh` to Spring's official `spring-grpc` starter or `connectrpc/connect-jvm`. Decision deferred until the first frontend feature actually needs a backend call.
-- **Browser**: will use **Connect-ES** (`@connectrpc/connect-web`) + **Connect-Query** (`@connectrpc/connect-query`) once the server can answer Connect/gRPC-Web traffic. Connect-ES speaks Connect protocol and falls back to gRPC-Web.
+- **Server**: Spring's official **`spring-grpc`** starter (`org.springframework.grpc:spring-grpc-server-spring-boot-starter` + `spring-grpc-server-web-spring-boot-starter`). gRPC handlers are served over the Spring MVC servlet on **port 8080** — the same Tomcat that serves the HTTP surface. Wire format is **gRPC-Web** (via `grpc-servlet-jakarta`), accessible to browsers AND to CLI tools like `grpcurl` over h2c. One process, one port. Native gRPC on a separate :9090 is *not* enabled — the single-servlet path covers both clients and keeps deployment / CORS / proxy config simpler.
+- **Browser client**: **Connect-Web** (`@connectrpc/connect-web`) + **Connect-Query** (`@connectrpc/connect-query`). Configure the transport with **`createGrpcWebTransport`** (not `createConnectTransport`) — `spring-grpc-server-web` speaks gRPC-Web, not native Connect protocol. Functionally equivalent for unary RPCs and that's all v0 needs.
 - **Schema management**: **Buf** for proto linting, breaking-change detection, and codegen. Backend Kotlin stubs come from the Gradle protobuf plugin; frontend TS clients come from `buf generate` per `buf.gen.yaml`.
 
-### Open gap: browser-callable transport
+### Service paths
 
-The pinned target ("Server speaks both gRPC and Connect/gRPC-Web") is an aspiration the current implementation does not yet satisfy. `net.devh` serves only plain gRPC, which browsers cannot speak (HTTP/2 trailers, varint framing, etc.). The Vite proxy is HTTP/1.1 and can't translate. **Resolving this is a prerequisite for any frontend → backend call.** Until then:
-
-- Backend correctness is verified via `grpcurl` from the CLI.
-- The frontend stays at a placeholder page (no Connect client wired).
-- This gap is a known, scoped follow-up — not a v0 risk to absorb silently.
+The servlet listens on the canonical gRPC path: `POST /com.tcoverwatch.<feature>.v<N>.<Service>/<Method>`. In local dev the Vite proxy maps `/rpc/*` → backend `/`, so frontend code calls e.g. `/rpc/com.tcoverwatch.v1.PingService/Ping`. In production, the frontend's Connect-Web transport baseUrl points at the API hostname; the same canonical paths apply.
 - **No JSON REST API in v0.** gRPC + Connect handles everything. If a future integration partner needs REST, generate a REST gateway from the same protos at that point.
 
 **Service shape (initial)**:
@@ -562,11 +557,11 @@ These are implementation choices to make at code-writing time, not in this doc:
 
 Spring Boot 4 + Spring Framework 7 are recent enough that **third-party Spring Boot starters may not yet have GA-tagged compatible releases**. The most likely friction points:
 
-- gRPC Spring starters (community-maintained, historically lag Spring Boot majors by 3–6 months) — **resolved on the initial scaffold**: `net.devh:grpc-server-spring-boot-starter:3.1.0.RELEASE` compiles and resolves dependencies cleanly against Spring Boot 4.0.6 + Kotlin 2.2.0 + JDK 23. Watch for runtime issues if/when this changes.
+- gRPC Spring starter — **resolved**: migrated from `net.devh:grpc-server-spring-boot-starter` to Spring's official `org.springframework.grpc:spring-grpc-server-spring-boot-starter` 1.0.3 (+ `spring-grpc-server-web-spring-boot-starter` for browser-facing gRPC-Web). Same proto handlers serve both grpcurl (h2c) and browsers via one Spring MVC servlet on :8080.
 - Any Spring Security extensions — still untested; first usage lands when auth is implemented.
 - JPA-extension libraries — base Spring Data JPA loads fine.
 
-Mitigation: pin to specific Spring Boot 4–compatible versions where they exist; fall back to direct grpc-java integration without a Spring starter if necessary.
+Mitigation: pin to specific Spring Boot 4–compatible versions where they exist.
 
 ## Scaffold notes (from `scaffold/initial` branch)
 
