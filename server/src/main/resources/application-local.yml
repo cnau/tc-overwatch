@@ -9,12 +9,14 @@ spring:
     driver-class-name: org.postgresql.Driver
 
   # In local dev, Liquibase runs at startup for convenience (no separate migrate container).
-  # NOTE: this uses the app DB user (tco_app), not the migrate role. Override in local docker-compose
-  # to run migrations as tco_migrate before the app starts if RLS gets in the way.
+  # Migrations run as tco_migrate so (a) tables are owned by a different role than
+  # the app uses, which means RLS actually filters tco_app's queries (owners
+  # bypass RLS by default), and (b) only tco_migrate has CREATE on public for
+  # Liquibase's own bookkeeping tables.
   liquibase:
     enabled: true
-    user: tco_app
-    password: tco_app_local_password
+    user: tco_migrate
+    password: tco_migrate_local_password
 
   jpa:
     show-sql: true

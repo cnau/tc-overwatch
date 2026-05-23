@@ -1,11 +1,17 @@
 # Database Migrations
 
-Liquibase (Groovy DSL). Layout:
+Liquibase, two file formats — match the format to the kind of change:
+
+- **Groovy DSL** (`.groovy`) for table manipulations and basic data updates: `createTable`, `addColumn`, `addUniqueConstraint`, `createIndex`, `addForeignKeyConstraint`, INSERT/UPDATE data. Most changesets live here.
+- **Liquibase formatted SQL** (`.sql` with `--changeset` headers) for SQL-heavy migrations: functions, procedures, views, triggers, complex expression-based migrations. Native PostgreSQL syntax — no double-escaping through Groovy strings, IDE picks up SQL highlighting, `$$ ... $$` function bodies work without surprise.
+
+Layout:
 
 ```
 server/src/main/resources/db/changelog/
 ├── db.changelog-master.groovy        # list of include file: entries, in order
-├── changelog-001.groovy              # accumulates changesets
+├── fn-<name>.sql                     # function / procedure / view, runOnChange (own file per rule 5)
+├── changelog-001.groovy              # accumulates schema-change changesets
 ├── changelog-002.groovy              # next file once the previous gets large
 └── ...
 ```
@@ -44,7 +50,7 @@ The counter is a suffix, not a prefix, and the prefix is identical across the gr
 2. Never modify a committed changeset (`id` + `author` is the checksum key). New change → new changeset.
 3. One changeset per logical change.
 4. **No database enum types** — use `VARCHAR` and enforce values in app code. `ALTER TYPE ADD VALUE` can't run in a transaction and values can't be removed.
-5. Functions/views/policies that change in place: `runOnChange: true`, own file.
+5. Functions/views/policies that change in place: `runOnChange: true`, own `.sql` file (Liquibase formatted SQL — see Layout). When the body contains semicolons inside a `$$ ... $$` block, the changeset header needs `splitStatements:false` or Liquibase's default parser will break the dollar-quoted body.
 6. Tenant-scoped tables declare RLS in the same changeset as the table. No interim state.
 
 ## Tenant-scoped table template

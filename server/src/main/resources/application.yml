@@ -11,6 +11,11 @@ spring:
   # at app startup using the autoconfig default (enabled when on the classpath).
   liquibase:
     change-log: classpath:/db/changelog/db.changelog-master.groovy
+    # App data lives in `tco`. Liquibase's own bookkeeping tables
+    # (databasechangelog, databasechangeloglock) stay in `public` — they're
+    # framework infrastructure, not domain data.
+    default-schema: tco
+    liquibase-schema: public
 
   jpa:
     hibernate:
@@ -18,6 +23,7 @@ spring:
     properties:
       hibernate:
         format_sql: false
+        default_schema: tco   # entities resolve to `tco.<table>` without per-@Table annotation
     open-in-view: false    # avoid OSIV antipattern; DAOs return DTOs, not entities
 
   jackson:
