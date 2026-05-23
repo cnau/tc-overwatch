@@ -7,6 +7,7 @@ import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import java.time.Instant
+import java.util.UUID
 
 @Entity
 @Table(name = "ping_log")
@@ -16,7 +17,7 @@ class Ping(
     @Column(name = "received_at", nullable = false)
     var receivedAt: Instant,
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "id")
-    var id: Long? = null,
+    var id: UUID? = null,
 )

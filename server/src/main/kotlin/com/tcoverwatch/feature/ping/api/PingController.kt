@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.time.Instant
+import java.util.UUID
 
 @RestController
 @RequestMapping("/api/ping", produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -32,7 +33,7 @@ data class PingRequest(
 data class PingResponse(
     val echo: String,
     val serverReceivedAt: String,
-    val id: Long,
+    val id: UUID,
 )
 
 internal fun PingRequest.toDto(now: Instant = Instant.now()): PingDto = PingDto(message = message, receivedAt = now)

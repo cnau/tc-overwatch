@@ -10,11 +10,11 @@
 
 databaseChangeLog {
 
-    changeSet(id: '001-create-ping-log', author: 'tco') {
+    changeSet(id: '001-create-ping-log', author: 'Christian Nau') {
         comment 'Smoke-test table for the scaffold; not part of the domain model.'
 
         createTable(tableName: 'ping_log') {
-            column(name: 'id', type: 'BIGSERIAL') {
+            column(name: 'id', type: 'UUID', defaultValueComputed: 'gen_random_uuid()') {
                 constraints(primaryKey: true, nullable: false)
             }
             column(name: 'message', type: 'TEXT') {

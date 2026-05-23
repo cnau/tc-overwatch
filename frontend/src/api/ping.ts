@@ -10,7 +10,7 @@ export type PingRequest = {
 export type PingResponse = {
   echo: string
   serverReceivedAt: string
-  id: number
+  id: string
 }
 
 export async function sendPing(req: PingRequest): Promise<PingResponse> {
