@@ -10,7 +10,7 @@ Controller → Service → DAO → Repository → Database. Strategic detail in 
 
 ## Controller (HTTP)
 
-- `*HttpController` per feature, `@RestController`, `@RequestMapping("/api/<resource>")`, constructor-injected service.
+- `*Controller` per feature, `@RestController`, `@RequestMapping("/api/<resource>")`, constructor-injected service.
 - Request/response DTOs are Kotlin `data class`es co-located with the controller. Jackson handles (de)serialization automatically.
 - `@Valid` on the request DTO + Jakarta Bean Validation annotations (`@NotBlank`, `@Size`, `@Email`, etc.) on its fields. Shape validation only — no DB queries.
 - Convert request DTO → service DTO via the api-mapper extension, call service, convert response.
@@ -27,16 +27,18 @@ Controller → Service → DAO → Repository → Database. Strategic detail in 
 
 ## DAO — when justified
 
-A dedicated `*Dao` class (`@Repository`, constructor-injected with the repository) is justified by **complex queries, multi-step orchestration, projection/aggregation, or non-trivial entity ↔ DTO mapping**. For 1:1 CRUD-on-a-repository, the service can use the repository directly and call the mapper extension inline — don't add the indirection just to honor the diagram.
+A dedicated `*Dao` class (`@Component`, constructor-injected with the repository) is justified by **complex queries, multi-step orchestration, projection/aggregation, or non-trivial entity ↔ DTO mapping**. For 1:1 CRUD-on-a-repository, the service can use the repository directly and call the mapper extension inline — don't add the indirection just to honor the diagram.
 
 When a DAO exists: `@Transactional` on write methods (belt + suspenders), entities never leave. Use `repository.findByIdOrNull(id) ?: throw NotFoundException(...)` for lookups; `getReferenceById(id)` for FK assignments without loading.
+
+**Why `@Component`, not `@Repository`**: `@Repository` exists to enable Spring's persistence-exception translation. That translation is needed at the layer that *directly* throws JPA exceptions — i.e., the Spring Data interface (`PingRepository : JpaRepository<...>`), which is already annotated. The DAO sits one level above, calling the repository; it doesn't throw raw JPA exceptions itself, so adding `@Repository` here is misleading. Plain `@Component`.
 
 ## Repository
 
 ```kotlin
-interface FooRepository : JpaRepository<FooEntity, UUID> {
+interface FooRepository : JpaRepository<Foo, UUID> {
     // RLS auto-filters by tenant.
-    fun findByName(name: String): List<FooEntity>
+    fun findByName(name: String): List<Foo>
 }
 ```
 
@@ -50,33 +52,48 @@ Strategy in `architecture.md` § Multi-tenancy. In code:
 - Cross-tenant work goes through an explicit `withAdminConnection { ... }` block on the `tco_admin` pool. Grep-able, reviewable, rare.
 - Per-tenant background jobs `SET LOCAL app.tenant_id` before any DB work. A wrapper utility makes this automatic; forgetting it shows up as queries returning empty under RLS.
 
+## Naming
+
+Each feature has one shape per layer, named without redundant suffixes:
+
+| Layer | Type | Example |
+|---|---|---|
+| API request | `FooRequest` | `PingRequest` |
+| API response | `FooResponse` | `PingResponse` |
+| Service / DAO DTO | `FooDto` | `PingDto` |
+| Entity | `Foo` | `Ping` (`@Entity` + `@Table` define it; the suffix would be redundant) |
+
+**Primary keys are `UUID`, always.** Liquibase column type `UUID` with `defaultValueComputed: 'gen_random_uuid()'` (see `liquibase.md` § Tenant-scoped table template). Hibernate entity uses `@GeneratedValue(strategy = GenerationType.UUID)` so the id is set client-side at flush time; the DB default is belt-and-suspenders for raw SQL inserts (fixtures, ops). No `BIGSERIAL`, no `Long` primary keys — UUIDs are non-sequential (no contention on monotonic inserts), tenant-collision-safe across shards if we ever scale out, and serialize uniformly as strings on the JSON wire.
+
+For features where service request and service response need genuinely different shapes (rare for v0 CRUD; common for search/projection endpoints later), split into `FooDto` + `FooSummaryDto` or similar — but default to a single `FooDto` that carries everything the layer needs, with nullable fields for "not yet set" values like an unsaved `id`.
+
 ## Mappers — Kotlin extension functions
 
-Two boundary mappings exist: **api DTO ↔ service DTO** at the controller, and **entity ↔ service DTO** at the DAO. Both are written as top-level Kotlin extension functions co-located with the target type.
+Two boundary mappings exist: **request/response ↔ DTO** at the controller, and **entity ↔ DTO** at the DAO. Both are top-level Kotlin extension functions, co-located with the target type. Three function names, used consistently across every feature: `toDto`, `toEntity`, `toResponse`.
 
 ```kotlin
-// feature/foo/api/FooHttpController.kt (or a sibling FooApiMapper.kt)
-internal fun FooApiRequest.toServiceRequest(now: Instant = Instant.now()): ServiceFooRequest =
-    ServiceFooRequest(message = message, receivedAt = now)
+// feature/foo/api/FooController.kt (or a sibling FooApiMapper.kt)
+internal fun FooRequest.toDto(now: Instant = Instant.now()): FooDto =
+    FooDto(message = message, receivedAt = now)
 
-internal fun ServiceFooResponse.toResponse(): FooApiResponse =
-    FooApiResponse(echo = echo, serverReceivedAt = receivedAt.toString(), id = id)
+internal fun FooDto.toResponse(): FooResponse =
+    FooResponse(echo = message, serverReceivedAt = receivedAt.toString(), id = requireNotNull(id) { ... })
 ```
 
 ```kotlin
 // feature/foo/persistence/FooEntityMapper.kt
-internal fun ServiceFooRequest.toEntity(): FooEntity =
-    FooEntity(message = message, receivedAt = receivedAt)
+internal fun FooDto.toEntity(): Foo =
+    Foo(message = message, receivedAt = receivedAt)
 
-internal fun FooEntity.toServiceResponse(): ServiceFooResponse =
-    ServiceFooResponse(
-        id = requireNotNull(id) { "FooEntity must have id when mapping to response" },
-        echo = message,
+internal fun Foo.toDto(): FooDto =
+    FooDto(
+        id = requireNotNull(id) { "Foo must have an id when mapping to FooDto" },
+        message = message,
         receivedAt = receivedAt,
     )
 ```
 
-- Naming: `Foo.toX()`. Files: api-side mappers can live in the controller file (small) or `FooApiMapper.kt`; persistence-side in `FooEntityMapper.kt`.
+- Files: api-side mappers can live in the controller file (small) or `FooApiMapper.kt`; persistence-side in `FooEntityMapper.kt`.
 - `internal` visibility — not Spring beans; called directly, no injected mapper field.
 - Audit fields (`tenantId`, `createdAt`, `updatedAt`) are populated by JPA lifecycle hooks (`@PrePersist`/`@PreUpdate` on a `BaseEntity`, or `AuditingEntityListener` once wired). The mapper never writes them.
 - For updates, take the ID as a separate service-method parameter (typically from `@PathVariable`), not from the request body.

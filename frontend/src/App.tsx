@@ -1,24 +1,9 @@
-import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
 import { Container, Stack, Group, Title, Text, Button, Card, Badge, Code, Alert } from '@mantine/core'
 
-import { sendPing } from '@/api/ping'
+import { useSendPing } from '@/api/ping'
 
-// Temporary hello-world page. Proves the end-to-end path:
-//   browser → fetch JSON → Spring MVC @RestController → PingService → PingDao →
-//   Postgres → JSON response → render.
-//
-// This page is throwaway. Real Dashboard / Transaction-details pages replace it
-// when the UI epic feature work lands.
-export function App() {
-  const [counter, setCounter] = useState(0)
-  const pingCall = useMutation({ mutationFn: sendPing })
-
-  const handlePing = () => {
-    const n = counter + 1
-    setCounter(n)
-    pingCall.mutate({ message: `Hello from the browser (call #${n})` })
-  }
+export default function App() {
+  const ping = useSendPing()
 
   return (
     <Container size="sm" py="xl">
@@ -38,30 +23,30 @@ export function App() {
           <Stack gap="md">
             <Group justify="space-between">
               <Text fw={500}>Ping</Text>
-              <Button onClick={handlePing} loading={pingCall.isPending} disabled={pingCall.isPending}>
+              <Button onClick={() => ping.mutate({ message: 'hello' })} loading={ping.isPending}>
                 Send ping
               </Button>
             </Group>
 
-            {pingCall.isError && (
+            {ping.isError && (
               <Alert color="red" variant="light" title="Request failed">
-                {pingCall.error.message}
+                {ping.error.message}
               </Alert>
             )}
 
-            {pingCall.data && (
+            {ping.data && (
               <Stack gap="xs">
                 <Group gap="xs">
                   <Text size="sm" c="dimmed">echo:</Text>
-                  <Code>{pingCall.data.echo}</Code>
+                  <Code>{ping.data.echo}</Code>
                 </Group>
                 <Group gap="xs">
                   <Text size="sm" c="dimmed">serverReceivedAt:</Text>
-                  <Code>{pingCall.data.serverReceivedAt}</Code>
+                  <Code>{ping.data.serverReceivedAt}</Code>
                 </Group>
                 <Group gap="xs">
                   <Text size="sm" c="dimmed">id:</Text>
-                  <Code>{pingCall.data.id}</Code>
+                  <Code>{ping.data.id}</Code>
                 </Group>
               </Stack>
             )}

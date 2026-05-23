@@ -3,7 +3,6 @@
 @../docs/claude/spring-boot.md
 @../docs/claude/kotlin.md
 @../docs/claude/liquibase.md
-@../docs/claude/proto.md
 
 ## Module overview
 
@@ -48,5 +47,5 @@ Profile selection drives DB connection details, secret source, and OAuth client 
 - **Three Postgres roles** (`tco_app`, `tco_admin`, `tco_migrate`) are provisioned for local dev in `scripts/db-init/01-roles.sql`. Application code uses `tco_app` by default; cross-tenant operations require an explicit `withAdminConnection { ... }` block on the `tco_admin` pool. Migrations run as `tco_migrate`. See `docs/claude/liquibase.md` and `docs/architecture.md` § Multi-tenancy.
 - **`ping` is a scaffold smoke test**, not a pattern to extend. The first real feature replaces it and becomes the reference shape for everything that follows.
 - **Mappers are Kotlin extension functions, not MapStruct.** No `kapt`, no annotation-processor pipeline, no generated mapper beans. See `docs/architecture.md` § Kotlin extension-function mappers at boundaries and `docs/claude/spring-boot.md` § Mappers.
-- **Kotlin `internal` visibility on persistence classes**: per scaffold notes in `docs/architecture.md`, the public `PingDao` can't consume `internal` entity / repository types as constructor parameters, so those types stay public and the "entities don't leak from DAOs" rule is enforced by code review. Extension-function mappers themselves can stay `internal` (they're not Spring beans).
-- **`build/` directory is gitignored** and includes Gradle-generated sources. Don't import from there directly — the `:proto` module's generated stubs are accessible via the project dependency.
+- **Kotlin `internal` visibility on persistence classes**: per scaffold notes in `docs/architecture.md`, a public DAO can't consume `internal` entity / repository types as constructor parameters, so those types stay public and the "entities don't leak from DAOs" rule is enforced by code review. Extension-function mappers themselves can stay `internal` (they're not Spring beans).
+- **`build/` directory is gitignored** and includes Gradle-generated sources. Don't import from there directly.
