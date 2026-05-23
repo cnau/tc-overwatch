@@ -11,9 +11,8 @@ The implementation stack. Decisions locked here are the result of explicit requi
 | Backend | Spring Boot 4.0.6 + Kotlin | Bleeding edge — watch third-party compat |
 | Database | Postgres 18 | `pg_trgm` for fuzzy match, `JSONB` for flexible fields |
 | Migrations | Liquibase (Groovy DSL) | Changelogs in `src/main/resources/db/changelog/`; runs via the `migrate` one-shot container as `tco_migrate` |
-| API wire format | gRPC + Protobuf | Connect protocol for browser compat |
-| Schema management | Buf | proto linting, breaking-change detection, codegen |
-| Frontend | React + TypeScript + Vite | Connect-ES client |
+| API wire format | HTTP / JSON | Spring MVC `@RestController` + Jackson |
+| Frontend | React + TypeScript + Vite | TanStack Query + `fetch` |
 | Background jobs | Postgres-backed queue (Spring `@Scheduled` + `LISTEN/NOTIFY`) | Upgrade to Temporal only if SaaS scale demands |
 | Auth | Google OAuth2 via Spring Security | `gmail.modify` scope; tokens stored server-side encrypted |
 | Local dev | Docker Compose (Postgres) + `gradle bootRun` + `vite dev` | |
@@ -35,7 +34,7 @@ Strict layering: **Controller → Service → DAO → Repository**. Each layer h
 
 | Layer | Inputs | Outputs | Notes |
 |---|---|---|---|
-| **Controller** (gRPC service impl, or HTTP `@Controller` for OAuth callback / static serving) | Protobuf request types (or HTTP request objects) | Protobuf response types (or HTTP response objects) | Converts wire-level types ↔ service DTOs |
+| **Controller** (Spring MVC `@RestController`) | Request DTOs (Jackson-bound) | Response DTOs (Jackson-bound) | Converts wire-level DTOs ↔ service DTOs |
 | **Service** | Service DTOs | Service DTOs | Business logic, multi-step coordination, transactions (`@Transactional`) |
 | **DAO** | Service DTOs | Service DTOs | Wraps Spring Data repository; converts service DTOs ↔ JPA entities. **Hibernate entities never escape this layer.** |
 | **Repository** | JPA entities | JPA entities | Pure Spring Data JPA interface |
@@ -65,9 +64,11 @@ Why extension functions, explicitly **not MapStruct**:
 
 Discipline: if a mapping is genuinely tedious (50+ fields, multi-source enrichment), it's signalling that the *types* are wrong, not that you need MapStruct — split the DTO or simplify the mapping target.
 
-### gRPC integration
+### HTTP API surface
 
-Spring's official **`spring-grpc`** starter (`org.springframework.grpc:spring-grpc-server-spring-boot-starter` + `spring-grpc-server-web-spring-boot-starter`). Handlers are annotated `@GrpcService` (from `org.springframework.grpc.server.service`) and served over the Spring MVC servlet via `grpc-servlet-jakarta`. Same port (8080) for both gRPC clients and the small HTTP surface; native gRPC on a separate :9090 is *not* used.
+The application exposes plain HTTP/JSON endpoints from Spring MVC `@RestController`s. Jackson handles request/response (de)serialization. There is **no gRPC**, no Protobuf wire format, no Connect/Connect-Web layer — the browser-can't-speak-gRPC-trailers constraint made the proto-first path more friction than its (theoretical-for-our-scope) benefits could earn. JSON is what the React SPA can consume natively; one fewer wire-format translation in the stack.
+
+If a future service-to-service caller actually needs a typed RPC contract, revisit then — for v0 / pilot, one single-page-app calling one Spring service is the entire API consumer set.
 
 ### Authentication / Security
 
@@ -84,16 +85,16 @@ Single Postgres, every tenant-scoped table carries `tenant_id` (UUID, NOT NULL).
 - **Testing**: JUnit 5 + MockK + Testcontainers (Postgres + any other infra) + AssertK assertions.
 - **Code style**: ktlint + detekt, both enforced in CI.
 - **Logging**: Logback (Spring Boot default) with a structured JSON encoder for the `prod` / `unraid` profiles.
-- **JSON**: not used at the API layer (gRPC); Jackson remains as the Spring default for the few HTTP endpoints that exist (OAuth callback, health, static serving).
+- **JSON**: Jackson at the API boundary. `@JsonInclude(Include.NON_NULL)` as the default.
 - **Package layout**: by-feature (`feature/<name>/api/`, `feature/<name>/service/`, `feature/<name>/persistence/`). Cross-cutting concerns (`config/`, `common/`, `security/`) at the top level.
 - **Transactions**: `@Transactional` on service-layer methods *and* DAO-layer methods (belt-and-suspenders against accidental call paths that skip the service).
 - **Validation**: two-layer.
   - **Controller boundary**: shape validation only — Bean Validation (Jakarta `@Valid`) on the converted service DTO. Required-field, format, length, regex. *No DB queries here* — controllers must not need persistence to validate.
-  - **Service**: business-rule + DB-level validation (uniqueness checks, foreign-key existence, cross-entity invariants). Throws domain exceptions caught by a controller-side advisor that maps them to gRPC status codes.
+  - **Service**: business-rule + DB-level validation (uniqueness checks, foreign-key existence, cross-entity invariants). Throws domain exceptions caught by a `@RestControllerAdvice` that maps them to HTTP status codes.
 
-### HTTP surface (in addition to the gRPC surface)
+### HTTP surface
 
-The Spring Boot process exposes a single Spring MVC servlet on port 8080 that serves **both** gRPC handlers (via `spring-grpc-server-web` + `grpc-servlet-jakarta`) and the small HTTP surface. The HTTP surface is small and deliberate:
+The Spring Boot process exposes Spring MVC on port 8080. The surface is small and deliberate:
 
 - **`/oauth/callback`** — Google OAuth redirect target. Spring MVC `@RestController` that exchanges the `code` for tokens, encrypts the refresh token, creates a session, and issues a 302 to the frontend SPA's root URL with the session cookie set.
 - **`/api/auth/*`** — any other HTTP-only auth endpoints (logout, session refresh) as needed.
@@ -109,7 +110,7 @@ Rationale (informed by past pain): tightly coupling frontend assets to backend d
 
 Where the frontend lives per environment:
 
-- **Local dev**: Vite dev server (`localhost:5173`) with a **Vite proxy** forwarding gRPC paths to the backend on `localhost:8080`. Same-origin in the browser during dev — no CORS needed locally.
+- **Local dev**: Vite dev server (`localhost:5173`) with a **Vite proxy** forwarding `/api/*` and `/oauth/*` to the backend on `localhost:8080`. Same-origin in the browser during dev — no CORS needed locally.
 - **Unraid pilot**: separate `nginx`-based container hosting the static build, on its own Cloudflare Tunnel hostname (e.g. `app.example.com` for the frontend, `api.example.com` for the backend). Each tunnel hostname is independent; either can be deployed without touching the other.
 - **GCP production**: frontend built and pushed to **Cloud Storage + Cloud CDN** (or a small Cloud Run static container — pick later). Backend on GKE. Two distinct deploy pipelines.
 
@@ -123,46 +124,42 @@ Because frontend and backend live on different origins, CORS rules and cross-ori
   - `prod`: production frontend hostname(s)
 - **`Access-Control-Allow-Credentials: true`** on backend responses so cookies flow.
 - **Session cookie attributes**: `HttpOnly; Secure; SameSite=None; Domain=.example.com` so the browser sends the cookie on cross-origin requests within the registered parent domain. Frontend and backend hostnames **must share a parent domain** (e.g. `app.example.com` + `api.example.com` both under `.example.com`).
-- **Connect-ES client** is configured with `credentials: "include"` so the browser attaches cookies on every gRPC call.
-- **CSRF**: the combination of `SameSite=None; Secure` cookies + Connect's custom `Content-Type` header (browsers won't send cross-origin without preflight) + an explicit origin check on the OAuth callback is sufficient for v0. If we ever need stricter posture, switching from session cookies to **Bearer tokens in the `Authorization` header** is a clean upgrade — Connect-ES supports it via an interceptor with no API changes.
+- **`fetch` calls** use `credentials: 'include'` so the browser attaches cookies on every API call.
+- **CSRF**: `SameSite=None; Secure` cookies + a custom `Content-Type: application/json` (browsers won't send cross-origin without preflight) + an explicit origin check on the OAuth callback is sufficient for v0. If we ever need stricter posture, switching from session cookies to **Bearer tokens in the `Authorization` header** is a clean upgrade.
 
 ### Why not Bearer tokens from day one?
 
-Bearer tokens (issued at OAuth-callback time, stored in frontend memory, sent on every gRPC call) avoid cross-origin cookie semantics entirely and are arguably more standard for SaaS APIs. Trade-off: storing the token safely in the frontend (memory-only, never localStorage; refresh-on-load via a short-lived "is the session still good?" call) adds frontend complexity that cookie-based sessions don't need.
+Bearer tokens (issued at OAuth-callback time, stored in frontend memory, sent on every API call) avoid cross-origin cookie semantics entirely and are arguably more standard for SaaS APIs. Trade-off: storing the token safely in the frontend (memory-only, never localStorage; refresh-on-load via a short-lived "is the session still good?" call) adds frontend complexity that cookie-based sessions don't need.
 
 Cookies win for v0 because the auth complexity is centralized in the backend and the parent-domain requirement is a one-time DNS decision. Revisit if SaaS goes mobile (where bearer tokens are friendlier) or if a security review demands it.
 
-## API — gRPC + gRPC-Web
+## API — HTTP / JSON
 
-The API is **proto-first**. `.proto` files in `proto/` are the single source of truth; they generate both backend stubs (Kotlin) and frontend clients (TypeScript).
+Plain HTTP + JSON via Spring MVC `@RestController`s and Jackson. The browser SPA consumes the API directly with `fetch` (wrapped in typed helpers under `frontend/src/api/<domain>.ts`).
 
-- **Server**: Spring's official **`spring-grpc`** starter (`org.springframework.grpc:spring-grpc-server-spring-boot-starter` + `spring-grpc-server-web-spring-boot-starter`). gRPC handlers are served over the Spring MVC servlet on **port 8080** — the same Tomcat that serves the HTTP surface. Wire format is **gRPC-Web** (via `grpc-servlet-jakarta`), accessible to browsers AND to CLI tools like `grpcurl` over h2c. One process, one port. Native gRPC on a separate :9090 is *not* enabled — the single-servlet path covers both clients and keeps deployment / CORS / proxy config simpler.
-- **Browser client**: **Connect-Web** (`@connectrpc/connect-web`) + **Connect-Query** (`@connectrpc/connect-query`). Configure the transport with **`createGrpcWebTransport`** (not `createConnectTransport`) — `spring-grpc-server-web` speaks gRPC-Web, not native Connect protocol. Functionally equivalent for unary RPCs and that's all v0 needs.
-- **Schema management**: **Buf** for proto linting, breaking-change detection, and codegen. Backend Kotlin stubs come from the Gradle protobuf plugin; frontend TS clients come from `buf generate` per `buf.gen.yaml`.
+- **Wire format**: JSON request + JSON response. `Content-Type: application/json`. No proto, no gRPC, no Connect, no codegen.
+- **URL convention**: `/api/<resource>` for collection-style endpoints, `/api/<resource>/<id>` for items, `/api/<resource>/<id>/<action>` for action endpoints. Hyphenate multi-word resources (`/api/known-contacts`). Use `POST` for any state change (we're not REST-purists about PUT vs PATCH for the v0 surface).
+- **Request/Response DTOs**: Kotlin `data class`es co-located with the controller (`feature/<name>/api/`). Jackson auto-serializes. Bean Validation annotations (`@NotBlank`, `@Size`, `@Email`, etc.) on the request DTO; validated via `@Valid`.
+- **Errors**: a `@RestControllerAdvice` maps domain exceptions to HTTP status codes (`NotFoundException` → 404; `ValidationException` → 400; `PermissionDeniedException` → 403; `UnauthenticatedException` → 401). The error response body is a small JSON shape (`{ code, message, details? }`) for the frontend to render.
+- **Types stay in sync by discipline**, not by codegen: the request/response DTOs on the server and the matching TypeScript types in `frontend/src/api/<domain>.ts` are kept aligned by review. For v0's small surface, this is cheaper than running OpenAPI codegen. Revisit if the surface grows.
 
-### Service paths
-
-The servlet listens on the canonical gRPC path: `POST /com.tcoverwatch.<feature>.v<N>.<Service>/<Method>`. In local dev the Vite proxy maps `/rpc/*` → backend `/`, so frontend code calls e.g. `/rpc/com.tcoverwatch.v1.PingService/Ping`. In production, the frontend's Connect-Web transport baseUrl points at the API hostname; the same canonical paths apply.
-- **No JSON REST API in v0.** gRPC + Connect handles everything. If a future integration partner needs REST, generate a REST gateway from the same protos at that point.
-
-**Service shape (initial)**:
-- `EmailService` — list / detail for processed emails by transaction
-- `TransactionService` — CRUD, lifecycle transitions
-- `ContactService` — CRUD, role corrections, manual promotion/demotion
-- `DashboardService` — aggregate queries for the dashboard
-- `OnboardingService` — first-sync consent, backfill status
-
-Full proto definitions are TBD as implementation begins.
+**Initial endpoint set** (lands as feature epics ship):
+- `/api/ping` — smoke test (scaffold; throwaway once real endpoints land)
+- `/api/email/*` — email triage queries + actions
+- `/api/transactions/*` — transaction list + details + lifecycle
+- `/api/contacts/*` — known-contacts directory + governance
+- `/api/dashboard/*` — aggregate queries for the dashboard
+- `/api/onboarding/*` — first-sync consent + backfill status
 
 ## Frontend
 
 **React + TypeScript + Vite**.
 
-- **State + data fetching**: **Connect-Query** (`@connectrpc/connect-query`) on top of TanStack Query v5+. Connect-Query auto-generates `useQuery` / `useMutation` hooks per RPC from the proto schema — query keys are managed automatically. Manual `createPromiseClient` + hand-written hooks remain a fallback for cases Connect-Query can't express (streaming, custom cache shaping).
+- **State + data fetching**: **TanStack Query v5+** with hand-written typed `fetch` wrappers under `src/api/<domain>.ts`. One file per domain exports the request/response types, the fetch function, and the `useQuery` / `useMutation` hooks that wrap it.
 - **UI primitives**: **Mantine v8+** — hooks-first, TypeScript-first component library. Ships finished primitives (modals, drawers, dialogs, date pickers, notifications, dropzone, etc.). Theme + CSS variables; no required CSS-in-JS (Mantine 7 dropped emotion, Mantine 8 continued the pure-CSS direction). Mantine's own form package (`@mantine/form`) is intentionally **not** used — see Forms below.
 - **Routing**: React Router v6.4+ with the Data Router (`createBrowserRouter`, route loaders, `errorElement`).
 - **Forms**: **react-hook-form + Zod** (via `@hookform/resolvers/zod`). Mantine inputs wired via react-hook-form's `Controller`; thin per-input wrappers (`RhfTextInput`, `RhfSelect`) hide the Controller boilerplate once N>1 forms exist. Backend service-DTO shape is the source of truth; Zod schemas on the frontend mirror it for client-side validation.
-- The frontend never talks to Gmail or any external service directly; all data flows through the gRPC API.
+- The frontend never talks to Gmail or any external service directly; all data flows through the backend HTTP API.
 
 **Why Mantine over shadcn/ui or MUI** — solo developer, less React-fluent, small v0 surface, B2B SaaS (not a design-forward consumer product). Mantine ships finished components and stays as an npm dependency that can be `npm update`d, instead of either (a) requiring assembly of headless primitives (shadcn copies source into the repo — more code to own) or (b) imposing the Material aesthetic (MUI). Aesthetic is clean and doesn't read as Google/Material. If the SaaS grows past v0 and a custom design system becomes important, Mantine can be re-themed deeply before any migration is needed.
 
@@ -188,7 +185,7 @@ Single repo runs locally with:
 
 ```
 docker compose up -d postgres        # Postgres 18 container, bound to localhost:5432
-./gradlew bootRun                    # Spring Boot dev server on :8080 (gRPC + Connect)
+./gradlew bootRun                    # Spring Boot dev server on :8080
 cd frontend && npm run dev           # Vite dev server on :5173
 ```
 
@@ -344,7 +341,7 @@ steps:
     run: docker compose -f docker-compose.unraid.yml up -d backend
   - name: Wait for healthcheck
     run: ./scripts/wait-for-healthy.sh backend 60s
-  - name: Smoke test (gRPC ping)
+  - name: Smoke test (HTTP ping)
     run: ./scripts/smoke.sh
 ```
 
@@ -506,9 +503,9 @@ Only the edge LB has a public IP. Everything else is private and reachable only 
 
 ### Authentication / authorization at the API boundary
 
-- **gRPC auth interceptor** runs on every method, default-deny. Method-level authorization rules opt in via annotation / metadata; unauthenticated methods (e.g. the OAuth callback handler) are an explicit allowlist.
+- **Spring Security filter chain** runs on every request, default-deny. Method/path authorization rules opt in via annotations or filter-chain config; unauthenticated endpoints (e.g. the OAuth callback handler) are an explicit allowlist.
 - **Session model**: HTTP-only, Secure, SameSite=Lax cookie carries an opaque session token. Backend looks up the session server-side; no JWT verification dance for v0.
-- **CSRF**: gRPC-Web / Connect requests require a `Content-Type` and a custom header that browsers won't send cross-origin without preflight; combined with SameSite cookies this is sufficient for v0. The OAuth callback path uses the standard `state` parameter to prevent CSRF on that specific HTTP flow.
+- **CSRF**: `Content-Type: application/json` + SameSite cookies + an explicit origin check on the OAuth callback is sufficient for v0. The OAuth callback path uses the standard `state` parameter to prevent CSRF on that specific HTTP flow.
 - **Admin RPCs** require not just authentication but explicit admin-role membership on the authenticated user; checked at the interceptor. Admin RPCs are also the only entry points that may eventually call `withAdminConnection { ... }` for DB access.
 
 ### Observability for security
@@ -529,7 +526,7 @@ Only the edge LB has a public IP. Everything else is private and reachable only 
 - Secret Manager + External Secrets Operator
 - NetworkPolicies (default-deny)
 - Pod Security Restricted, distroless images, non-root containers
-- gRPC auth interceptor, session cookies, CSRF protection on the OAuth callback
+- Spring Security filter chain, session cookies, CSRF protection on the OAuth callback
 - Cloud Audit Logs on, structured logging with PII discipline
 
 **Later (deliberately deferred)**:
@@ -545,7 +542,6 @@ Only the edge LB has a public IP. Everything else is private and reachable only 
 
 These are implementation choices to make at code-writing time, not in this doc:
 
-- Specific gRPC Spring starter (compat with Spring Boot 4 is the deciding factor)
 - US-address parser library
 - Fuzzy-match library (string distance / token set ratio)
 - Phone normalization library (likely `libphonenumber` since it's industry standard)
@@ -557,7 +553,7 @@ These are implementation choices to make at code-writing time, not in this doc:
 
 Spring Boot 4 + Spring Framework 7 are recent enough that **third-party Spring Boot starters may not yet have GA-tagged compatible releases**. The most likely friction points:
 
-- gRPC Spring starter — **resolved**: migrated from `net.devh:grpc-server-spring-boot-starter` to Spring's official `org.springframework.grpc:spring-grpc-server-spring-boot-starter` 1.0.3 (+ `spring-grpc-server-web-spring-boot-starter` for browser-facing gRPC-Web). Same proto handlers serve both grpcurl (h2c) and browsers via one Spring MVC servlet on :8080.
+- gRPC Spring starters — **moot**: scaffold initially picked proto-first / gRPC, then pivoted to plain HTTP/JSON when the browser-can't-read-HTTP/2-trailers constraint surfaced. See git tag `pivot-to-json` for the cutover. No third-party gRPC starter currently in play.
 - Any Spring Security extensions — still untested; first usage lands when auth is implemented.
 - JPA-extension libraries — base Spring Data JPA loads fine.
 

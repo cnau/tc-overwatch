@@ -27,7 +27,7 @@ ktlint + detekt enforced in CI: `./gradlew :server:ktlintCheck :server:detekt`; 
 
 ## Coroutines
 
-v0 is uniformly blocking (gRPC → service → JDBC). Don't introduce `kotlinx.coroutines` — Spring 6+ supports them well, but mixing suspending and blocking JPA creates surprise edges. If a real fan-out need appears, surface it explicitly.
+v0 is uniformly blocking (Spring MVC → service → JDBC). Don't introduce `kotlinx.coroutines` — Spring 6+ supports them well, but mixing suspending controllers with blocking JPA creates surprise edges. If a real fan-out need appears, surface it explicitly.
 
 ## Anti-patterns
 

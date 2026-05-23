@@ -9,7 +9,7 @@ Lead each response with `[personal:tc-overwatch]` so Christian can tell at a gla
 ## Where to look
 
 - `GOALS.md` — strategy, v0 boundary, current focus, non-goals.
-- `docs/architecture.md` — stack, layering, security zones, deployment, multi-tenancy/RLS. Decisions here are pinned via explicit trade-off discussions (layered DTOs, Kotlin extension-function mappers, RLS day one, three Postgres roles, proto-first, separate frontend deploy, no retroactive Gmail reorganization). Surface the case for changing one — don't silently diverge.
+- `docs/architecture.md` — stack, layering, security zones, deployment, multi-tenancy/RLS. Decisions here are pinned via explicit trade-off discussions (layered DTOs, Kotlin extension-function mappers, RLS day one, three Postgres roles, HTTP/JSON API, separate frontend deploy, no retroactive Gmail reorganization). Surface the case for changing one — don't silently diverge.
 - `docs/task-inventory.md` — full task map with `[FOCUS]` / `[REVIEW]` / `[BACKLOG]` flags.
 - `docs/glossary.md` — project vocabulary (TC, transaction key, primary vs. cooperating agent, triage labels, hot/cold storage). Use these terms; don't invent alternates.
 - `docs/claude/` — shared coding conventions, imported by module-level `CLAUDE.md` files.
@@ -36,7 +36,7 @@ References to HaulerHero, work tickets, work services, the `christiannau` GitHub
 - **Kotlin DSL** for all Gradle build files (`*.gradle.kts`). No Groovy build scripts.
 - **Liquibase Groovy DSL** for all migrations (`*.groovy` under `server/src/main/resources/db/changelog/`). See `docs/claude/liquibase.md`.
 - **Run from the root**: `./gradlew build`, `./gradlew :server:test`, `npm --prefix frontend run build` — paths anchored at the repo root.
-- **Proto-first**: API contract changes start in `proto/`, then regen, then code. Backend Kotlin stubs come from the Gradle protobuf plugin; frontend TS clients come from Buf (`buf generate`).
+- **HTTP/JSON API**: backend exposes Spring MVC `@RestController`s. Frontend types in `frontend/src/api/<domain>.ts` mirror the backend DTO shapes by review, not codegen — keep them aligned when touching either side.
 - Run the relevant build before committing — `./gradlew build` for backend changes, `npm --prefix frontend run build` for frontend changes.
 
 ### Never
