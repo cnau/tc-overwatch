@@ -3,7 +3,8 @@
 
 spring:
   application:
-    name: tc-overwatch-server
+    name: tc-overwatch
+    version: 0.0.1
 
   # Liquibase migration changelog. In production, migrations are run by a one-shot
   # `migrate` container (the `tco_migrate` DB role) before the backend starts, with
