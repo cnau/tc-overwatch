@@ -20,8 +20,10 @@ import net.devh.boot.grpc.server.service.GrpcService
 class PingRpcController(
     private val pingService: PingService,
 ) : PingServiceGrpc.PingServiceImplBase() {
-
-    override fun ping(request: PingRequest, responseObserver: StreamObserver<PingResponse>) {
+    override fun ping(
+        request: PingRequest,
+        responseObserver: StreamObserver<PingResponse>,
+    ) {
         try {
             validateShape(request)
             val serviceResponse = pingService.ping(request.toServiceRequest())

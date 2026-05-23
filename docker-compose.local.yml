@@ -19,7 +19,9 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - tco-postgres-data:/var/lib/postgresql/data
+      # Postgres 18+ stores data under /var/lib/postgresql/<major>/docker; mount the parent.
+      # See https://github.com/docker-library/postgres/pull/1259.
+      - tco-postgres-data:/var/lib/postgresql
       - ./scripts/db-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d tco"]

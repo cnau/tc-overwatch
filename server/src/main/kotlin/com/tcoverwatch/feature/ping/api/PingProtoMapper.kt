@@ -16,7 +16,8 @@ internal fun PingRequest.toServiceRequest(now: Instant = Instant.now()): Service
     )
 
 internal fun ServicePingResponse.toProtoResponse(): PingResponse =
-    PingResponse.newBuilder()
+    PingResponse
+        .newBuilder()
         .setId(id)
         .setEcho(echo)
         .setServerReceivedAt(receivedAt.toString())

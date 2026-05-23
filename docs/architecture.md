@@ -136,9 +136,18 @@ Cookies win for v0 because the auth complexity is centralized in the backend and
 
 The API is **proto-first**. `.proto` files in `proto/` are the single source of truth; they generate both backend stubs (Kotlin) and frontend clients (TypeScript).
 
-- **Server**: speaks both standard gRPC (HTTP/2) and Connect/gRPC-Web (browser-compatible). Both wire from the same handler implementations.
-- **Browser**: cannot speak raw gRPC (HTTP/2 trailers issue). Uses **Connect-ES** (`@connectrpc/connect-web`) which speaks Connect protocol and falls back to gRPC-Web — both are server-compatible with our gRPC server.
-- **Schema management**: **Buf** for proto linting, breaking-change detection, and codegen. `buf.gen.yaml` defines codegen plugins for Kotlin server stubs and TypeScript client stubs.
+- **Server today**: `net.devh:grpc-server-spring-boot-starter` serves **plain gRPC over HTTP/2 only.** Verified end-to-end via `grpcurl` against the `PingService` smoke test. **The browser cannot reach this server directly** — see *Open gap: browser-callable transport* below.
+- **Target server posture**: speak gRPC (HTTP/2) *and* Connect/gRPC-Web from the same handler implementations. Path-to-target options on the table: add a gRPC-Web servlet filter, run an Envoy / `grpcwebproxy` sidecar, or migrate off `net.devh` to Spring's official `spring-grpc` starter or `connectrpc/connect-jvm`. Decision deferred until the first frontend feature actually needs a backend call.
+- **Browser**: will use **Connect-ES** (`@connectrpc/connect-web`) + **Connect-Query** (`@connectrpc/connect-query`) once the server can answer Connect/gRPC-Web traffic. Connect-ES speaks Connect protocol and falls back to gRPC-Web.
+- **Schema management**: **Buf** for proto linting, breaking-change detection, and codegen. Backend Kotlin stubs come from the Gradle protobuf plugin; frontend TS clients come from `buf generate` per `buf.gen.yaml`.
+
+### Open gap: browser-callable transport
+
+The pinned target ("Server speaks both gRPC and Connect/gRPC-Web") is an aspiration the current implementation does not yet satisfy. `net.devh` serves only plain gRPC, which browsers cannot speak (HTTP/2 trailers, varint framing, etc.). The Vite proxy is HTTP/1.1 and can't translate. **Resolving this is a prerequisite for any frontend → backend call.** Until then:
+
+- Backend correctness is verified via `grpcurl` from the CLI.
+- The frontend stays at a placeholder page (no Connect client wired).
+- This gap is a known, scoped follow-up — not a v0 risk to absorb silently.
 - **No JSON REST API in v0.** gRPC + Connect handles everything. If a future integration partner needs REST, generate a REST gateway from the same protos at that point.
 
 **Service shape (initial)**:

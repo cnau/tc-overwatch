@@ -5,11 +5,11 @@ spring:
   application:
     name: tc-overwatch-server
 
-  # Liquibase is OFF by default in this base config. Migrations run as a separate
-  # one-shot `migrate` container (the `tco_migrate` DB role) in the deploy workflow.
-  # Local-dev profile turns it on for convenience (see application-local.yml).
+  # Liquibase migration changelog. In production, migrations are run by a one-shot
+  # `migrate` container (the `tco_migrate` DB role) before the backend starts, with
+  # `spring.liquibase.enabled=false` set via that profile. Local-dev runs migrations
+  # at app startup using the autoconfig default (enabled when on the classpath).
   liquibase:
-    enabled: false
     change-log: classpath:/db/changelog/db.changelog-master.groovy
 
   jpa:
