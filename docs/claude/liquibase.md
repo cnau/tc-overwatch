@@ -1,8 +1,42 @@
 # Database Migrations
 
-Liquibase (Groovy DSL). Master: `server/src/main/resources/db/changelog/db.changelog-master.groovy`. Changesets: `changes/NNN-<slug>.groovy`. Register each new file with explicit `include file:` entries — no `includeAll`.
+Liquibase (Groovy DSL). Layout:
+
+```
+server/src/main/resources/db/changelog/
+├── db.changelog-master.groovy        # list of include file: entries, in order
+├── changelog-001.groovy              # accumulates changesets
+├── changelog-002.groovy              # next file once the previous gets large
+└── ...
+```
+
+**One changelog file accumulates many changesets.** Don't create a new file per migration. Rotate to the next `changelog-NNN.groovy` only when the current one gets unwieldy — soft target ~5k lines. The numbered file suffix is just a monotonic counter; it doesn't describe content.
+
+Register each new changelog file in the master with an explicit `include file:` entry — no `includeAll`. The master file is just an ordered list of includes, one per changelog file.
 
 Migrations run as the `tco_migrate` role. Production: one-shot `migrate` container completes before backend starts. Local: Spring Boot runs them on startup as a dev shortcut.
+
+## Changeset naming
+
+Each `changeSet` has a descriptive `id` (verb-noun, kebab-case), not a counter:
+
+```groovy
+changeSet(id: 'create-foo-table',     author: 'Christian Nau') { ... }
+changeSet(id: 'add-tenant-id-to-foo', author: 'Christian Nau') { ... }
+changeSet(id: 'index-foo-by-name',    author: 'Christian Nau') { ... }
+```
+
+A counter is only justified when a single logical step has to be split across multiple changesets — the same operation, chunked. In that case the base name stays the same and a `-NNN` suffix is appended:
+
+```groovy
+changeSet(id: 'backfill-contact-tenant-id-001', author: 'Christian Nau') { ... }
+changeSet(id: 'backfill-contact-tenant-id-002', author: 'Christian Nau') { ... }
+changeSet(id: 'backfill-contact-tenant-id-003', author: 'Christian Nau') { ... }
+```
+
+The counter is a suffix, not a prefix, and the prefix is identical across the group — that's what marks them as the same operation. If the names differ, they aren't a counted group: they're independent changesets that should each get their own descriptive name (`add-foo-status-column`, `backfill-foo-status`, `add-foo-status-not-null`), and execution order is carried by file order alone (changesets execute top-to-bottom within a changelog file, files execute in master's `include` order).
+
+`id` + `author` is Liquibase's checksum key — once a changeset is committed and applied, never change either. Pre-ship, while running against a throwaway local DB, you can edit in place (we did this twice during scaffolding).
 
 ## Rules
 
@@ -16,7 +50,7 @@ Migrations run as the `tco_migrate` role. Production: one-shot `migrate` contain
 ## Tenant-scoped table template
 
 ```groovy
-changeSet(id: 'NNN-create-foo', author: 'Christian Nau') {
+changeSet(id: 'create-foo-table', author: 'Christian Nau') {
     comment 'Foo — tenant-scoped, RLS-protected.'
 
     createTable(tableName: 'foo') {
