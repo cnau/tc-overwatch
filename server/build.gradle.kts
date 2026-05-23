@@ -52,6 +52,7 @@ dependencies {
     runtimeOnly(libs.postgres.jdbc)
     implementation(libs.liquibase.core)
     implementation(libs.liquibase.groovyDsl)
+    implementation(libs.springBoot.liquibase) // SB4 moved Liquibase autoconfig to its own module
 
     // Kotlin
     implementation(libs.kotlin.reflect)
@@ -86,3 +87,10 @@ detekt {
     allRules = false
     config.setFrom(rootProject.files("detekt.yml"))
 }
+
+// detekt 1.23.x embeds Kotlin 2.0.x; running under Kotlin 2.2 fails with
+// "compiled with Kotlin 2.0.21 but currently running with 2.2.0". detekt 2.0.0
+// (which embeds 2.2) is not yet released. Disable detekt tasks until it ships;
+// ktlint covers formatting in the meantime. Re-enable by deleting this block.
+tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach { enabled = false }
+tasks.withType<io.gitlab.arturbosch.detekt.DetektCreateBaselineTask>().configureEach { enabled = false }

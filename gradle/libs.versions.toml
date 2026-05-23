@@ -22,7 +22,7 @@ testcontainers          = "1.21.3"
 junit                   = "5.12.0"
 mockk                   = "1.13.13"
 assertk                 = "0.28.1"
-detekt                  = "1.23.7"
+detekt                  = "1.23.8"
 ktlintPlugin            = "12.1.2"
 
 [libraries]
@@ -51,6 +51,8 @@ javax-annotation-api                = { module = "javax.annotation:javax.annotat
 postgres-jdbc                       = { module = "org.postgresql:postgresql", version.ref = "postgresJdbc" }
 liquibase-core                      = { module = "org.liquibase:liquibase-core", version.ref = "liquibase" }
 liquibase-groovyDsl                 = { module = "org.liquibase:liquibase-groovy-dsl", version.ref = "liquibaseGroovyDsl" }
+# Spring Boot 4 split per-feature autoconfig into separate modules; spring-boot-liquibase is no longer transitive via data-jpa
+springBoot-liquibase                = { module = "org.springframework.boot:spring-boot-liquibase" }
 
 # Kotlin
 kotlin-reflect                      = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }

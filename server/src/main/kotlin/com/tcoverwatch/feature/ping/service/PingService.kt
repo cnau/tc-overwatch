@@ -12,7 +12,6 @@ import org.springframework.transaction.annotation.Transactional
 class PingService(
     private val pingDao: PingDao,
 ) {
-
     @Transactional
     fun ping(request: ServicePingRequest): ServicePingResponse {
         // Business validation would go here. For Ping there's nothing meaningful to check.
