@@ -44,37 +44,30 @@ Four buckets, pick the right one:
 
 No global store (no Redux, Zustand, Jotai).
 
-## Backend calls — `fetch` + TanStack Query
+## Backend calls — `requestJson` + TanStack Query
 
 One file per backend domain in `src/api/`. Each file exports:
 - TypeScript request/response types matching the backend DTOs (kept aligned by review).
 - TanStack Query hooks: noun-first for queries (`useFoo` / `useFoos` / `useFooById`), verb-first for mutations (`useCreateFoo` / `useUpdateFoo` / `useSendPing`).
 
-**The `fetch` function is module-private — never exported.** Only the hooks are the public surface. A consumer that imports the raw fetch fn skips TanStack Query's cache, deduplication, retry policy, and (when #82 lands) the ApiError envelope parsing. Keeping the fetch fn unexported makes that bypass structurally impossible.
+**The `requestJson` call is module-private — never exported.** Only the hooks are the public surface. A consumer that imports the raw fetch fn skips TanStack Query's cache, deduplication, retry policy, and the `ApiError` envelope parsing. Keeping it unexported makes that bypass structurally impossible.
 
-Components never call `fetch` directly — always go through `src/api/<domain>.ts`. Mutations invalidate relevant queries by query key on success.
+All backend calls go through the shared `requestJson<T>` helper in `src/api/http.ts`. It handles `Content-Type`, `credentials: 'include'`, JSON parsing, and converts the backend's `{ code, message, details? }` error envelope into a typed `ApiError` (also exported from `src/api/http.ts`). Components never call `fetch` directly — always go through `src/api/<domain>.ts`. Mutations invalidate relevant queries by query key on success.
 
 ```ts
 // src/api/contacts.ts
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
+import { requestJson } from '@/api/http'
+
 export type Contact = { id: string; displayName: string; email: string | null; role: string }
 export type CreateContactRequest = { displayName: string; email?: string }
 
 async function fetchContacts(): Promise<Contact[]> {
-  const r = await fetch('/api/contacts', { credentials: 'include' })
-  if (!r.ok) throw new Error(`Failed to list contacts: ${r.status}`)
-  return r.json()
+  return requestJson<Contact[]>('/api/contacts')
 }
 async function createContact(req: CreateContactRequest): Promise<Contact> {
-  const r = await fetch('/api/contacts', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify(req),
-  })
-  if (!r.ok) throw new Error(`Failed to create contact: ${r.status}`)
-  return r.json()
+  return requestJson<Contact>('/api/contacts', { method: 'POST', body: JSON.stringify(req) })
 }
 
 export const contactKeys = { all: ['contacts'] as const, list: () => [...contactKeys.all, 'list'] as const }
@@ -90,9 +83,11 @@ export function useCreateContact() {
 }
 ```
 
-`credentials: 'include'` is non-negotiable — the session cookie rides on every call. Cross-origin in prod relies on a shared parent domain (see `architecture.md` § CORS). In dev, the Vite proxy makes `/api/*` same-origin so the flag is a no-op but stays for prod consistency.
+`requestJson` sets `credentials: 'include'` so the session cookie rides on every call. Cross-origin in prod relies on a shared parent domain (see `architecture.md` § CORS). In dev, the Vite proxy makes `/api/*` same-origin so the flag is a no-op but stays for prod consistency.
 
-**Error mapping**: read the JSON error shape (`{ code, message }`) from the response and surface it. Don't parse error `message` for branching — switch on `code`.
+**Error handling**: failed responses throw a typed `ApiError` carrying `code`, `message`, `status`, and optional `details`. UI code switches on `error.code` for branching (`if (err instanceof ApiError && err.code === 'CONFLICT') ...`) and renders `error.message` for display. Never parse the `message` text for branching — that's what `code` is for. Non-envelope failures (proxy errors, network) surface as `ApiError` with `code: 'HTTP_ERROR'`.
+
+**Inline error display**: use `<ApiErrorAlert error={query.error} />` (from `@/components/ApiErrorAlert`) to render a query/mutation failure inline. It surfaces `ApiError.code` when present and falls back to `.message` otherwise. Override the default title via the `title` prop (`<ApiErrorAlert error={...} title="Couldn't save contact" />`). For code-specific recovery hints, branch on `error.code` *outside* the alert and render siblings — don't bolt a slot onto this component.
 
 ## Components
 
@@ -107,7 +102,7 @@ Default mindset: **small contracts, composition over configuration.** Reusabilit
 | Tier | Where | Reuse | Example |
 |---|---|---|---|
 | Primitives | `src/components/primitives/` | Wide | `AppButton`, `Money` (Mantine wrappers w/ project defaults) |
-| Composite | `src/components/<kind>/` | 2–N places | `StatCard`, `EmptyState`, `ConfirmDialog` |
+| Composite | `src/components/<kind>/` | 2–N places | `ApiErrorAlert`, `StatCard`, `EmptyState`, `ConfirmDialog` |
 | Domain | `src/components/<domain>/` or co-located | 1–2 places | `TransactionRow`, `EmailTriagePanel` |
 
 A `TransactionRow` reused in two places is still domain, not a primitive. Don't over-promote.

@@ -1,6 +1,7 @@
-import { Container, Stack, Group, Title, Text, Button, Card, Badge, Code, Alert } from '@mantine/core'
+import { Container, Stack, Group, Title, Text, Button, Card, Badge, Code } from '@mantine/core'
 
 import { useSendPing } from '@/api/ping'
+import ApiErrorAlert from '@/components/ApiErrorAlert'
 
 export default function App() {
   const ping = useSendPing()
@@ -28,11 +29,7 @@ export default function App() {
               </Button>
             </Group>
 
-            {ping.isError && (
-              <Alert color="red" variant="light" title="Request failed">
-                {ping.error.message}
-              </Alert>
-            )}
+            {ping.isError && <ApiErrorAlert error={ping.error} />}
 
             {ping.data && (
               <Stack gap="xs">
