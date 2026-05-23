@@ -53,3 +53,15 @@ logging:
   level:
     root: INFO
     com.tcoverwatch: DEBUG
+
+# Authentication. v0 mints HS256 JWTs (stub login path); the wiring is reused
+# when real Google OAuth lands. Real auth-flow strategy in docs/architecture.md
+# § Authentication.
+auth:
+  jwt:
+    # secret — required at startup. Set via env var AUTH_JWT_SECRET in unraid / prod
+    # (Secret Manager backed). Local has its own value in application-local.yml.
+    token-lifetime: 7d
+  cookie:
+    # Safe prod default; local profile overrides for plain-HTTP dev.
+    secure: true

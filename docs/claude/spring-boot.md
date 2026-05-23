@@ -147,6 +147,16 @@ internal fun Foo.toDto(): FooDto =
 
 Three profiles only: `local`, `unraid`, `prod`. Profile selection drives DB connection / secret source / OAuth client ID. Secrets come from env vars / Secret Manager / `.env` — never checked in. Adding a fourth profile needs a real architectural reason.
 
+## Security
+
+Strategy + cookie/JWT shape pinned in `architecture.md` § Authentication / Security. Operational rules:
+
+- `com.tcoverwatch.common.security.SecurityConfig` owns the single `SecurityFilterChain`. `JwtAuthenticationFilter` reads the `tco_session` cookie, validates via `JwtService.verify`, and populates `SecurityContextHolder` with a `JwtAuthenticationToken` whose principal is `AuthenticatedPrincipal(email, userId?, tenantId?)`.
+- Controllers read the principal via `@AuthenticationPrincipal principal: AuthenticatedPrincipal?` — never reach into `SecurityContextHolder` directly.
+- 401 / 403 from the security filter chain delegates to Spring MVC's `HandlerExceptionResolver` (via `@Lazy`-injected bean), which routes through `ApiErrorAdvice` so the response shape matches every other error envelope. Don't duplicate JSON serialization in the security layer.
+- `/api/auth/*` is the auth surface. Production endpoints (`/api/auth/me`, `/api/auth/logout`) live in `AuthController`. The stub login (`/api/auth/dev-login`) lives in a separate `DevAuthController` annotated `@Profile("local")` so it doesn't exist as a bean outside local dev.
+- Profile-gated controllers go in their own file — never mix `@Profile("local")` and unconditional `@RestController` classes in the same file. Different lifetimes deserve different files.
+
 ## Anti-patterns
 
 - Returning entities from controllers or services.
