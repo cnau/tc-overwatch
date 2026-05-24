@@ -15,8 +15,10 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
     EXECUTE format('ALTER TABLE %s ENABLE ROW LEVEL SECURITY', target_table);
+    -- NULLIF guards against the cast `''::uuid` blowing up when app.tenant_id
+    -- is unset. Empty string becomes NULL → predicate is UNKNOWN → row filtered.
     EXECUTE format(
-        'CREATE POLICY tenant_isolation ON %s USING (tenant_id = current_setting(''app.tenant_id'', true)::uuid)',
+        'CREATE POLICY tenant_isolation ON %s USING (tenant_id = NULLIF(current_setting(''app.tenant_id'', true), '''')::uuid)',
         target_table
     );
 END;

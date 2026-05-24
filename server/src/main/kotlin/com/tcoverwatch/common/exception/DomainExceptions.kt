@@ -33,6 +33,13 @@ class FailedPreconditionException(
     cause: Throwable? = null,
 ) : DomainException(code = "FAILED_PRECONDITION", message = message, cause = cause)
 
+// Distinct from FAILED_PRECONDITION so the frontend can branch on code — invitation-only
+// rejection has a specific UI (different from generic business-state failures).
+class InvitationRequiredException(
+    message: String,
+    cause: Throwable? = null,
+) : DomainException(code = "INVITATION_REQUIRED", message = message, cause = cause)
+
 // Service-layer shape-validation failure. The controller's `@Valid` path uses Jakarta's
 // MethodArgumentNotValidException — mapped separately by the advice into the same envelope.
 class ValidationException(

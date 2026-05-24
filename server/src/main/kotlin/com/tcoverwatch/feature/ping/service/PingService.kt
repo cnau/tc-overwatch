@@ -1,6 +1,6 @@
 package com.tcoverwatch.feature.ping.service
 
-import com.tcoverwatch.feature.ping.persistence.PingDao
+import com.tcoverwatch.feature.ping.dao.PingDao
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 

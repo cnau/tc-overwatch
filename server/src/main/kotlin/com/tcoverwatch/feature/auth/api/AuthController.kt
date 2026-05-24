@@ -10,7 +10,6 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
-import java.util.UUID
 
 @RestController
 @RequestMapping("/api/auth", produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -28,16 +27,5 @@ class AuthController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun logout() = Unit
 }
-
-data class MeResponse(
-    val email: String,
-    val userId: UUID?,
-    val tenantId: UUID?,
-)
-
-data class LoginResponse(
-    val token: String,
-    val user: MeResponse,
-)
 
 internal fun AuthenticatedPrincipal.toResponse(): MeResponse = MeResponse(email = email, userId = userId, tenantId = tenantId)
