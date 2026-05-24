@@ -1,23 +1,15 @@
-import { useState } from 'react'
-import { Alert, Badge, Center, Container, Group, Loader, Stack, Title } from '@mantine/core'
+import { Badge, Center, Container, Group, Loader, Stack, Title } from '@mantine/core'
 
 import { useMe } from '@/api/auth'
 import ApiErrorAlert from '@/components/ApiErrorAlert'
+import OAuthErrorAlert from '@/components/OAuthErrorAlert'
 import PingCard from '@/components/PingCard'
 import SignInCard from '@/components/SignInCard'
 import UserBadge from '@/components/UserBadge'
 import { useOAuthTokenBridge } from '@/hooks/useOAuthTokenBridge'
 
-const OAUTH_ERROR_MESSAGES: Record<string, string> = {
-  INVITATION_REQUIRED: 'This email is not yet invited.',
-  EMAIL_NOT_VERIFIED: 'Your Google account email is not verified.',
-  OAUTH_FAILED: 'Google sign-in was cancelled or failed.',
-}
-
 export default function App() {
   const oauthError = useOAuthTokenBridge()
-  const [oauthErrorDismissed, setOAuthErrorDismissed] = useState(false)
-  const showOAuthError = oauthError && !oauthErrorDismissed
   const me = useMe()
 
   return (
@@ -28,16 +20,7 @@ export default function App() {
           {me.data ? <UserBadge me={me.data} /> : <Badge color="blue" variant="light">scaffold</Badge>}
         </Group>
 
-        {showOAuthError && (
-          <Alert
-            color="red"
-            title="Sign-in didn't complete"
-            withCloseButton
-            onClose={() => setOAuthErrorDismissed(true)}
-          >
-            {OAUTH_ERROR_MESSAGES[oauthError] ?? `Sign-in error: ${oauthError}`}
-          </Alert>
-        )}
+        <OAuthErrorAlert error={oauthError} />
 
         {me.isPending && (
           <Center>
