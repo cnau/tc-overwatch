@@ -6,7 +6,6 @@ import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Lazy
-import org.springframework.http.HttpMethod
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer
 import org.springframework.security.config.http.SessionCreationPolicy
@@ -38,11 +37,6 @@ class SecurityConfig {
                         "/swagger-ui/**",
                         "/swagger-ui.html",
                     ).permitAll()
-                // POST /api/dev/invitations is the local-only invitation-seeding path
-                // (DevAdminController, @Profile("local")). Anonymous in local; bean
-                // doesn't exist in other profiles so the matcher matches nothing.
-                it.requestMatchers(HttpMethod.POST, "/api/dev/invitations").permitAll()
-                // Other /api/dev/* endpoints (e.g., the RLS probe) require auth.
                 it.anyRequest().authenticated()
             }.exceptionHandling { eh ->
                 eh.authenticationEntryPoint { req, res, _ ->

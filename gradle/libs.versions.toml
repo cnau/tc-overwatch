@@ -14,7 +14,7 @@ assertk                 = "0.28.1"
 detekt                  = "1.23.8"
 ktlintPlugin            = "12.1.2"
 springdocOpenapi        = "3.0.3"
-aspectjweaver           = "1.9.9.1"
+aspectjweaver           = "1.9.22.1"
 
 [libraries]
 # Spring Boot BOM (pulls in Spring web, security, data-jpa, actuator, etc. via dependency-management plugin)

@@ -20,6 +20,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dev/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/logout": {
         parameters: {
             query?: never;
@@ -46,6 +62,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["devLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dev/rls-probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["rlsProbe"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -81,6 +113,19 @@ export interface components {
             /** Format: uuid */
             id?: string;
         };
+        CreateInvitationRequest: {
+            /** Format: email */
+            email: string;
+        };
+        InvitationResponse: {
+            /** Format: uuid */
+            id?: string;
+            email?: string;
+            /** Format: uuid */
+            token?: string;
+            /** Format: date-time */
+            createdAt?: string;
+        };
         DevLoginRequest: {
             /** Format: email */
             email: string;
@@ -95,6 +140,12 @@ export interface components {
             userId?: string | null;
             /** Format: uuid */
             tenantId?: string | null;
+        };
+        RlsProbeResponse: {
+            tenantBound?: boolean;
+            email?: string | null;
+            /** Format: uuid */
+            userId?: string | null;
         };
     };
     responses: never;
@@ -125,6 +176,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PingResponse"];
+                };
+            };
+        };
+    };
+    createInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInvitationRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationResponse"];
                 };
             };
         };
@@ -167,6 +242,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+        };
+    };
+    rlsProbe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RlsProbeResponse"];
                 };
             };
         };
