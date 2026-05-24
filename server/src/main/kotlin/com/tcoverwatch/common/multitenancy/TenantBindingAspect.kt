@@ -10,11 +10,7 @@ import org.springframework.core.annotation.Order
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Component
 
-// Binds app.tenant_id inside every @Transactional method invoked by an
-// authenticated request, so RLS filters tenant-scoped tables automatically.
-// Order(1) + advisor pinned to order=0 in MultiTenancyConfig → we run INSIDE
-// the transaction; set_config(.., true) is released at commit.
-// No principal → no-op (the auth gate handles its own pre-tenant binding).
+// Mechanism + ordering pairing with MultiTenancyConfig in docs/claude/spring-boot.md § Multi-tenancy / RLS.
 @Aspect
 @Component
 @Order(1)

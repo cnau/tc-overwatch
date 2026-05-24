@@ -11,10 +11,8 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy
 import org.springframework.security.web.SecurityFilterChain
 
-// Profile-gated filter chain for the local-only dev seed endpoint. Kept here
-// (next to the controller) and @Profile("local") so the matcher itself doesn't
-// exist outside local — a future drop of @Profile on DevAdminController can't
-// expose POST /api/dev/invitations anonymously in prod.
+// @Profile-gated so the permitAll matcher itself doesn't exist outside local —
+// a future drop of @Profile on DevAdminController can't expose the path in prod.
 @Configuration
 @Profile("local")
 class DevSecurityConfig {

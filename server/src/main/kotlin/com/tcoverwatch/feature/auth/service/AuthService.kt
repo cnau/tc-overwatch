@@ -28,19 +28,15 @@ class AuthService(
 ) {
     @Transactional
     fun signIn(email: String): SignInResult {
-        // Normalize at the boundary — DB CHECK constraints enforce lowercase storage,
-        // and case-insensitive sign-in is the universal user expectation.
+        // Normalize at the boundary — DB CHECK enforces lowercase; sign-in is case-insensitive.
         val normalizedEmail = email.lowercase()
-        // Advisory lock on the email serializes concurrent first sign-ins so two
-        // races don't both provision separate tenants (the unique constraint would
-        // catch the user INSERT but a half-built tenant row would remain). Released
-        // at transaction end. hashtext collisions block unrelated emails for ms — fine.
+        // Serialize concurrent first sign-ins; otherwise two races both provision
+        // tenants before uq_app_user_email catches the user INSERT, leaving an orphan.
         entityManager
             .createNativeQuery("SELECT pg_advisory_xact_lock(hashtext(:email))")
             .setParameter("email", normalizedEmail)
             .singleResult
-        // Returning user: cross-tenant lookup (no tenant context yet pre-auth);
-        // RLS-scoped findByEmail would hide them.
+        // Cross-tenant lookup: no tenant context yet pre-auth; RLS-scoped findByEmail would hide.
         appUserRepository.findByEmailCrossTenant(normalizedEmail)?.let { existing ->
             return existing.toSignInResult()
         }
@@ -70,11 +66,9 @@ class AuthService(
     ): SignInResult {
         val tenant = tenantRepository.save(Tenant())
         val tenantId = requireNotNull(tenant.id) { "tenant id missing after save() — @GeneratedValue should populate it" }
-        // Flush so the tenant row exists when set_config runs and when the
-        // app_user FK fires at INSERT — don't depend on FlushMode.AUTO.
+        // Flush so subsequent ops see the tenant — don't rely on FlushMode.AUTO.
         entityManager.flush()
-        // Pre-auth path has no principal, so TenantBindingAspect can't bind for us —
-        // do it ourselves so RLS WITH CHECK accepts the app_user INSERT.
+        // Pre-auth: no principal yet, so bind app.tenant_id ourselves for the app_user RLS WITH CHECK.
         entityManager
             .createNativeQuery("SELECT set_config('app.tenant_id', :tenantId, true)")
             .setParameter("tenantId", tenantId.toString())

@@ -15,9 +15,6 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
-// Dev scaffolding: seed invitations for local sign-in testing + probe
-// TenantBindingAspect end-to-end. Lives in its own file because @Profile-gated
-// controllers don't share a file with unconditional ones.
 @RestController
 @RequestMapping("/api/dev", produces = [MediaType.APPLICATION_JSON_VALUE])
 @Profile("local")

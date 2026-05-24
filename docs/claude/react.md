@@ -6,6 +6,10 @@ Installed (scaffold): React 19, TypeScript 5.7, Vite 6, ESLint 9 flat config.
 
 Pinned, install per-feature: **TanStack Query v5+** with hand-written typed `fetch` wrappers (no codegen, no proto), Mantine v8+ (`@mantine/core` + `@mantine/hooks`; sub-packages per-feature), React Router v6.4+ Data Router, react-hook-form + Zod (`@hookform/resolvers/zod`), Vitest + RTL + user-event + MSW for HTTP mocking in tests.
 
+## Comments
+
+**Default to no comments. When you do write one, keep it to 2 lines or less.** If a comment needs three lines, the code is the wrong shape — fix it, or lift the explanation to the rule docs. Don't restate project rules in code. A comment earns its place only when the **why** is genuinely non-obvious.
+
 ## TypeScript
 
 TypeScript only. No JS in `src/`. Strict mode stays on.

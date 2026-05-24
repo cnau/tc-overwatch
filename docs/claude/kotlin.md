@@ -8,6 +8,10 @@ Kotlin 2.2.x, JDK 21+ (local toolchain 23 per scaffold), `-Xjsr305=strict`.
 
 ktlint + detekt enforced in CI: `./gradlew :server:ktlintCheck :server:detekt`; auto-fix with `:server:ktlintFormat`. Files end with a trailing newline. Gradle uses `compilerOptions { }` (Kotlin 2.x); older `kotlinOptions { }` is deprecated.
 
+## Comments
+
+**Default to no comments. When you do write one, keep it to 2 lines or less.** If it needs three lines, the code is the wrong shape — fix it, or lift the explanation to the relevant rule file in `docs/claude/`. Restating a project rule in a code comment is forbidden; the rule docs (`spring-boot.md`, `liquibase.md`, this file) are the source of truth. A comment earns its place only when the **why** is genuinely non-obvious — a hidden constraint, a workaround for a specific bug, an invariant a reader would otherwise miss. Don't explain what the code does; identifiers do that.
+
 ## Idioms
 
 - **Data classes** for DTOs. No setters; use `copy()` for derivation. Don't add behavior to data classes — keep them dumb.
