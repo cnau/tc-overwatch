@@ -57,6 +57,9 @@ logging:
 
 # See docs/architecture.md § Authentication.
 auth:
+  # Signup gate. invitation (v0 default) | open | paid. Enforced server-side on every
+  # sign-in attempt — never branched on by the frontend.
+  signup-mode: invitation
   jwt:
     # Required. `auth.jwt.secret` comes from AUTH_JWT_SECRET (Secret Manager-backed
     # in prod); application-local.yml has its own value.

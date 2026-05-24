@@ -8,10 +8,36 @@ Stack: Spring Boot 4 + Kotlin 2.2 + JDK 21+, plain HTTP/JSON via Spring MVC `@Re
 
 Controller → Service → DAO → Repository → Database. Strategic detail in `architecture.md` § Layered architecture. Operational rule: a service or controller that imports an `*Entity` class is broken layering — entities never leave the DAO. (Kotlin `internal` can't enforce this with the current single-module layout; it's a review-time check.)
 
+## Feature layout
+
+Each feature lives under `feature/<name>/` with these subpackages:
+
+```
+feature/<name>/
+├── api/                          # HTTP-facing
+│   ├── <Feature>Controller.kt    # @RestController + request→DTO and DTO→response mapper extensions
+│   ├── <Feature>Contracts.kt     # request + response data classes (no logic, no annotations beyond @Valid fields)
+│   └── …Controller.kt            # profile-gated or sibling controllers as needed
+├── service/                      # business logic
+│   ├── <Feature>Service.kt
+│   ├── <Feature>Dto.kt           # service-layer DTO (one per public shape; split when shapes diverge)
+│   └── <Result>.kt               # other service-layer types in their own files
+├── dao/                          # complex/orchestrating data access (when justified — see § DAO)
+│   └── <Feature>Dao.kt           # entity↔DTO mapper extensions live in here, with the DAO that uses them
+└── persistence/                  # JPA entity + Spring Data repository only
+    ├── <Entity>.kt
+    └── <Entity>Repository.kt
+```
+
+Rules of thumb:
+- **Request and response DTOs share a `<Feature>Contracts.kt`** — they're tightly coupled and small; no need for one-file-per-DTO.
+- **Service-layer DTOs get their own file each** (`PingDto.kt`, `SignInResult.kt`). They're standalone types, often referenced from multiple call sites.
+- **Mapper extension functions live in the file of the class that calls them.** `toDto`/`toResponse` (controller-side) → in `<Feature>Controller.kt`. `toEntity`/`toDto` (DAO-side) → in `<Feature>Dao.kt`. Not in a separate `Mapper.kt`.
+
 ## Controller (HTTP)
 
 - `*Controller` per feature, `@RestController`, `@RequestMapping("/api/<resource>")`, constructor-injected service.
-- Request/response DTOs are Kotlin `data class`es co-located with the controller. Jackson handles (de)serialization automatically.
+- Request/response DTOs live in `<Feature>Contracts.kt` (see § Feature layout). Jackson handles (de)serialization automatically.
 - `@Valid` on the request DTO + Jakarta Bean Validation annotations (`@NotBlank`, `@Size`, `@Email`, etc.) on its fields. Shape validation only — no DB queries.
 - Convert request DTO → service DTO via the api-mapper extension, call service, convert response.
 - **Return the response DTO directly. Never wrap in `ResponseEntity<…>`.** Status code is declared explicitly via `@ResponseStatus(HttpStatus.X)` on the method — including `HttpStatus.OK` for success endpoints. Side effects on the response (cookies, custom headers) inject `HttpServletResponse` as a method parameter and call `response.addHeader(…)`. The status is visible at the method signature; the response shape is the DTO; no inline `ResponseEntity` plumbing.
@@ -25,6 +51,7 @@ Controller → Service → DAO → Repository → Database. Strategic detail in 
 | `UnauthenticatedException` | 401 | `UNAUTHENTICATED` |
 | `ConflictException` | 409 | `CONFLICT` |
 | `FailedPreconditionException` | 422 | `FAILED_PRECONDITION` |
+| `InvitationRequiredException` | 422 | `INVITATION_REQUIRED` |
 
 `@Valid` failures (Jakarta `MethodArgumentNotValidException`) route to the same 400 / `VALIDATION_FAILED` envelope with per-field `details.fieldErrors`. Unhandled exceptions → 500 / `INTERNAL_ERROR` with a generic message (no internal leakage); the advice logs them with stack traces.
 
@@ -66,6 +93,8 @@ Each feature has one shape per layer. The schema names in `/v3/api-docs` mirror 
 
 A dedicated `*Dao` class (`@Component`, constructor-injected with the repository) is justified by **complex queries, multi-step orchestration, projection/aggregation, or non-trivial entity ↔ DTO mapping**. For 1:1 CRUD-on-a-repository, the service can use the repository directly and call the mapper extension inline — don't add the indirection just to honor the diagram.
 
+DAOs live in `feature/<name>/dao/`, separate from `persistence/` (entities + repositories). Entity↔DTO mapper extensions (`toEntity`, `toDto`) live in the DAO file — that's the caller. The `persistence/` package holds the JPA shapes; the `dao/` package holds the orchestration.
+
 When a DAO exists: `@Transactional` on write methods (belt + suspenders), entities never leave. Use `repository.findByIdOrNull(id) ?: throw NotFoundException(...)` for lookups; `getReferenceById(id)` for FK assignments without loading.
 
 **Why `@Component`, not `@Repository`**: `@Repository` exists to enable Spring's persistence-exception translation. That translation is needed at the layer that *directly* throws JPA exceptions — i.e., the Spring Data interface (`PingRepository : JpaRepository<...>`), which is already annotated. The DAO sits one level above, calling the repository; it doesn't throw raw JPA exceptions itself, so adding `@Repository` here is misleading. Plain `@Component`.
@@ -106,10 +135,12 @@ For features where service request and service response need genuinely different
 
 ## Mappers — Kotlin extension functions
 
-Two boundary mappings exist: **request/response ↔ DTO** at the controller, and **entity ↔ DTO** at the DAO. Both are top-level Kotlin extension functions, co-located with the target type. Three function names, used consistently across every feature: `toDto`, `toEntity`, `toResponse`.
+Two boundary mappings exist: **request/response ↔ DTO** at the controller, and **entity ↔ DTO** at the DAO. Both are top-level Kotlin extension functions. Three function names, used consistently across every feature: `toDto`, `toEntity`, `toResponse`.
+
+**Mapper extensions live in the file of the class that calls them.** Not in a sibling `*Mapper.kt`.
 
 ```kotlin
-// feature/foo/api/FooController.kt (or a sibling FooApiMapper.kt)
+// feature/foo/api/FooController.kt — controller uses these mappers, so they live here.
 internal fun FooRequest.toDto(now: Instant = Instant.now()): FooDto =
     FooDto(message = message, receivedAt = now)
 
@@ -118,7 +149,7 @@ internal fun FooDto.toResponse(): FooResponse =
 ```
 
 ```kotlin
-// feature/foo/persistence/FooEntityMapper.kt
+// feature/foo/dao/FooDao.kt — DAO uses these mappers, so they live here.
 internal fun FooDto.toEntity(): Foo =
     Foo(message = message, receivedAt = receivedAt)
 
@@ -130,7 +161,6 @@ internal fun Foo.toDto(): FooDto =
     )
 ```
 
-- Files: api-side mappers can live in the controller file (small) or `FooApiMapper.kt`; persistence-side in `FooEntityMapper.kt`.
 - `internal` visibility — not Spring beans; called directly, no injected mapper field.
 - Audit fields (`tenantId`, `createdAt`, `updatedAt`) are populated by JPA lifecycle hooks (`@PrePersist`/`@PreUpdate` on a `BaseEntity`, or `AuditingEntityListener` once wired). The mapper never writes them.
 - For updates, take the ID as a separate service-method parameter (typically from `@PathVariable`), not from the request body.

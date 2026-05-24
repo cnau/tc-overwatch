@@ -2,6 +2,7 @@ package com.tcoverwatch.common.api
 
 import com.tcoverwatch.common.exception.ConflictException
 import com.tcoverwatch.common.exception.FailedPreconditionException
+import com.tcoverwatch.common.exception.InvitationRequiredException
 import com.tcoverwatch.common.exception.NotFoundException
 import com.tcoverwatch.common.exception.PermissionDeniedException
 import com.tcoverwatch.common.exception.UnauthenticatedException
@@ -38,6 +39,9 @@ class ApiErrorAdvice {
 
     @ExceptionHandler(FailedPreconditionException::class)
     fun handleFailedPrecondition(e: FailedPreconditionException) = respond(HttpStatus.UNPROCESSABLE_ENTITY, e.code, e.message)
+
+    @ExceptionHandler(InvitationRequiredException::class)
+    fun handleInvitationRequired(e: InvitationRequiredException) = respond(HttpStatus.UNPROCESSABLE_ENTITY, e.code, e.message)
 
     @ExceptionHandler(ValidationException::class)
     fun handleValidation(e: ValidationException): ResponseEntity<ApiErrorResponse> {

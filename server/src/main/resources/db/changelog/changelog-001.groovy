@@ -87,6 +87,22 @@ databaseChangeLog {
             constraintName: 'uq_app_user_tenant_email',
         )
 
+        // Global UNIQUE(email) — one app_user per email across all tenants in v0.
+        // Also serializes the concurrent first-sign-in race: T2's INSERT fails on the
+        // constraint, the whole @Transactional rolls back, no orphan tenant. Revisit
+        // if/when multi-tenant-per-user lands (would relax to per-tenant uniqueness
+        // + a pending-invitation uniqueness for race safety).
+        addUniqueConstraint(
+            tableName: 'app_user',
+            columnNames: 'email',
+            constraintName: 'uq_app_user_email',
+        )
+
+        // Email is normalized to lowercase at the API boundary; this CHECK enforces
+        // the invariant at the DB so any path (admin psql, future ETL) can't slip
+        // mixed-case emails in and silently break the AuthService lookup.
+        sql "ALTER TABLE app_user ADD CONSTRAINT app_user_email_lowercase CHECK (email = lower(email));"
+
         createIndex(tableName: 'app_user', indexName: 'idx_app_user_tenant_id') {
             column(name: 'tenant_id')
         }
@@ -140,6 +156,9 @@ databaseChangeLog {
             columnNames: 'token',
             constraintName: 'uq_invitation_token',
         )
+
+        // Same lowercase invariant as app_user.email.
+        sql "ALTER TABLE invitation ADD CONSTRAINT invitation_email_lowercase CHECK (email = lower(email));"
 
         // Partial index — only pending invitations get looked up by email at the auth gate.
         sql 'CREATE INDEX idx_invitation_pending_email ON invitation (email) WHERE accepted_at IS NULL;'

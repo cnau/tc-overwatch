@@ -81,25 +81,26 @@ changeSet(id: 'create-foo-table', author: 'Christian Nau') {
         column(name: 'tenant_id')
     }
 
-    sql '''
-        ALTER TABLE foo ENABLE ROW LEVEL SECURITY;
-        CREATE POLICY tenant_isolation ON foo
-            USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
-    '''
+    sql "SELECT tco.enable_tenant_isolation('foo');"
 
     rollback {
-        sql '''
-            DROP POLICY IF EXISTS tenant_isolation ON foo;
-            ALTER TABLE foo DISABLE ROW LEVEL SECURITY;
-        '''
+        sql "SELECT tco.disable_tenant_isolation('foo');"
         dropTable(tableName: 'foo')
     }
 }
 ```
 
+The helper functions (`fn-tenant-isolation.sql`) wrap the table in:
+
+```sql
+ALTER TABLE foo ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON foo
+    USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+```
+
 Notes:
 
-- `current_setting('app.tenant_id', true)` returns `NULL` if the setting isn't set. The cast to `uuid` will fail in that case, which is desired — queries running without a tenant context can't read tenant-scoped data.
+- **`NULLIF(..., '')` is load-bearing.** `current_setting('app.tenant_id', true)` returns `''` (empty string), not `NULL`, when the setting isn't set. Casting `''` to `uuid` throws `invalid input syntax for type uuid` — that error propagates from the FIRST query the connection runs without a tenant context (e.g., the auth-gate's `findByEmail` lookup before a tenant exists). `NULLIF(.., '')` converts empty → NULL → policy predicate is UNKNOWN → row filtered. Quiet, correct behavior.
 - **Set the tenant via `SET LOCAL` inside a transaction**, never plain `SET`. `SET LOCAL` is scoped to the transaction and cleared at commit/rollback; `SET` leaks across the pooled connection and is the classic source of cross-tenant bugs.
 - The `tenant_id` index supports query planning under RLS — the optimizer uses it to filter rows before applying the policy in many cases.
 - **When adding compound indexes on tenant-scoped tables, lead with `tenant_id`** (e.g. `(tenant_id, created_at DESC)` for a list query). Postgres can sometimes drop the leading `tenant_id` predicate at plan time under RLS, but writing the index in tenant-first order keeps the plan obvious and avoids surprise full scans.

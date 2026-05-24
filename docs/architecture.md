@@ -77,7 +77,8 @@ If a future service-to-service caller actually needs a typed RPC contract, revis
 - **Spring Security** (Spring Security 7, paired with Spring Boot 4) — JWTs in `Authorization: Bearer <token>` headers; will gain Google OAuth2 client on top in a later PR.
 - **Bearer-token paradigm, no session cookies.** The backend mints an HS256-signed JWT with `email`, optional `userId`, optional `tenantId`. Clients send it on every request as `Authorization: Bearer <token>`. The filter populates `SecurityContext` with an `AuthenticatedPrincipal`. **Stateless on the server** — no session storage, no cookie machinery.
 - **JWT signing secret** comes from config (`auth.jwt.secret`) — env var / Secret Manager in non-local profiles, hardcoded local-only value in `application-local.yml`. HS256 today; switch to RS256 + JWKS when real Google OAuth lands (Google's IdP becomes the issuer, we become a resource server).
-- **Stub login** (`POST /api/auth/dev-login`) is profile-gated to `local` — accepts any well-formed email and returns `{token, user}`. Replaced by the real OAuth callback + invitation gate when those land.
+- **Stub login** (`POST /api/auth/dev-login`) is profile-gated to `local` — accepts any well-formed email, routes through the same `AuthService.signIn` the real OAuth callback will use, including the invitation gate. Local dev exercises the gate the same way prod will.
+- **Sign-in gate** (server-side, enforced by `AuthService.signIn`): returning user → straight through. New user under `signup-mode: invitation` → look up pending invitation by email; no match → 422 `INVITATION_REQUIRED`; match → atomically create tenant + app_user + mark invitation accepted (with `set_config('app.tenant_id', …, true)` inside the transaction so RLS accepts the `app_user` insert). Modes `open` (skip the invitation lookup) and `paid` (not yet implemented) plug into the same gate.
 - **Logout** (`POST /api/auth/logout`) is a 204 no-op — stateless tokens don't need server-side teardown. Client discards its stored token. A server-side revocation list lands when there's a reason to invalidate before expiry.
 - **Refresh tokens** (Google's) will be encrypted at the application layer with a KEK (from Secret Manager on GCP / `.env` on Unraid) before persisting to Postgres. Not yet wired.
 - **CSRF**: not applicable in the bearer paradigm — no ambient credentials for a browser to attach to a forged cross-origin request.
@@ -409,8 +410,9 @@ Developer runs `gradle bootRun` and `vite dev` from their laptop against a local
   ```sql
   ALTER TABLE [table_name] ENABLE ROW LEVEL SECURITY;
   CREATE POLICY tenant_isolation ON [table_name]
-    USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
+    USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
   ```
+  In practice migrations call `SELECT tco.enable_tenant_isolation('[table_name]')` — see `docs/claude/liquibase.md` § Tenant-scoped table template. `NULLIF` is required: `current_setting(.., true)` returns `''` (not NULL) when the setting is unset, and `''::uuid` throws.
 - The Spring Boot request pipeline sets `app.tenant_id` on the Postgres session at the start of each transaction, derived from the authenticated user. A small `@Component` `TenantConnectionInterceptor` (or equivalent JPA listener) executes `SET LOCAL app.tenant_id = '<uuid>'` on connection acquisition; the value is cleared at transaction end.
 - Migrations declare RLS policies alongside the tables they protect (Liquibase (Groovy DSL) migrations include both `CREATE TABLE` and `CREATE POLICY` in the same file).
 - Tests use Testcontainers Postgres with the same RLS policies enabled; a test must explicitly set the tenant context to read/write rows, which catches cross-tenant bugs at unit-test time.
