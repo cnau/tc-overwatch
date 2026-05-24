@@ -74,10 +74,11 @@ If a future service-to-service caller actually needs a typed RPC contract, revis
 
 ### Authentication / Security
 
-- **Spring Security** (Spring Security 7, paired with Spring Boot 4) — JWTs in `Authorization: Bearer <token>` headers; will gain Google OAuth2 client on top in a later PR.
+- **Spring Security** (Spring Security 7, paired with Spring Boot 4) — JWTs in `Authorization: Bearer <token>` headers, with Google OAuth2 wired as the production sign-in path.
 - **Bearer-token paradigm, no session cookies.** The backend mints an HS256-signed JWT with `email`, optional `userId`, optional `tenantId`. Clients send it on every request as `Authorization: Bearer <token>`. The filter populates `SecurityContext` with an `AuthenticatedPrincipal`. **Stateless on the server** — no session storage, no cookie machinery.
-- **JWT signing secret** comes from config (`auth.jwt.secret`) — env var / Secret Manager in non-local profiles, hardcoded local-only value in `application-local.yml`. HS256 today; switch to RS256 + JWKS when real Google OAuth lands (Google's IdP becomes the issuer, we become a resource server).
-- **Stub login** (`POST /api/auth/dev-login`) is profile-gated to `local` — accepts any well-formed email, routes through the same `AuthService.signIn` the real OAuth callback will use, including the invitation gate. Local dev exercises the gate the same way prod will.
+- **JWT signing secret** comes from config (`auth.jwt.secret`) — env var / Secret Manager in non-local profiles, hardcoded local-only value in `application-local.yml`. **HS256 self-signed is pinned**: Google (and any other IdP) is the *identity* source; we are the *session* source. Switching to RS256 with Google as issuer was considered and rejected — the session JWT carries our concepts (`tenantId`, `userId`) that no IdP has an opinion about, and Google-as-issuer would force mandatory refresh-token plumbing + per-request DB lookups + Google as a runtime dep at the refresh boundary.
+- **OAuth sign-in path** (`/oauth2/authorization/google` → `/login/oauth2/code/google` → SPA): Spring Security's `oauth2Login()` handles the OIDC flow; `OAuthSuccessHandler` reads the verified email from `OidcUser`, calls `AuthService.signIn(email)`, and redirects to the SPA with the minted JWT in a URL fragment (`#token=eyJ…`). SPA hash bridge stores the token and clears the fragment via `history.replaceState`. Failures redirect to `?error=CODE` for SPA display.
+- **Multi-IdP-ready by construction.** Spring's `oauth2-client` is multi-provider natively; `OAuthSuccessHandler` extracts the verified email through the OIDC `OidcUser` interface (covers Google, Microsoft, Apple, Okta, Auth0). Adding a second OIDC provider = one `registration` block in `application.yml` + one SPA button. A non-OIDC provider (e.g. GitHub OAuth2) would extend the handler's email resolver — local change, not architectural.
 - **Sign-in gate** (server-side, enforced by `AuthService.signIn`): returning user → straight through. New user under `signup-mode: invitation` → look up pending invitation by email; no match → 422 `INVITATION_REQUIRED`; match → atomically create tenant + app_user + mark invitation accepted (with `set_config('app.tenant_id', …, true)` inside the transaction so RLS accepts the `app_user` insert). Modes `open` (skip the invitation lookup) and `paid` (not yet implemented) plug into the same gate.
 - **Logout** (`POST /api/auth/logout`) is a 204 no-op — stateless tokens don't need server-side teardown. Client discards its stored token. A server-side revocation list lands when there's a reason to invalidate before expiry.
 - **Refresh tokens** (Google's) will be encrypted at the application layer with a KEK (from Secret Manager on GCP / `.env` on Unraid) before persisting to Postgres. Not yet wired.
@@ -86,7 +87,7 @@ If a future service-to-service caller actually needs a typed RPC contract, revis
 
 ### Multi-tenancy in the request pipeline
 
-Single Postgres, every tenant-scoped table carries `tenant_id` (UUID, NOT NULL). **RLS is enforced from day one** — full details in *Multi-tenancy* section below. `TenantBindingAspect` (Spring AOP, in `com.tcoverwatch.common.multitenancy`) wraps every `@Transactional` method, reads the authenticated principal's `tenantId` from `SecurityContextHolder`, and calls `set_config('app.tenant_id', …, true)` so RLS sees the right tenant. Pinned to fire INSIDE the transaction via `MultiTenancyConfig`'s `@EnableTransactionManagement(order = 0)` paired with `@Order(1)` on the aspect. Anonymous calls (`/api/auth/dev-login`, the local dev `POST /api/dev/invitations` seeder) hit the aspect, find no principal, no-op — the auth gate handles its own transaction-local binding before inserting `app_user`.
+Single Postgres, every tenant-scoped table carries `tenant_id` (UUID, NOT NULL). **RLS is enforced from day one** — full details in *Multi-tenancy* section below. `TenantBindingAspect` (Spring AOP, in `com.tcoverwatch.common.multitenancy`) wraps every `@Transactional` method, reads the authenticated principal's `tenantId` from `SecurityContextHolder`, and calls `set_config('app.tenant_id', …, true)` so RLS sees the right tenant. Pinned to fire INSIDE the transaction via `MultiTenancyConfig`'s `@EnableTransactionManagement(order = 0)` paired with `@Order(1)` on the aspect. Anonymous calls (the OAuth callback that ultimately invokes `AuthService.signIn`, the local dev `POST /api/dev/invitations` seeder) hit the aspect, find no principal, no-op — the auth gate handles its own transaction-local binding before inserting `app_user`.
 
 ### Locked-in defaults
 
@@ -104,8 +105,8 @@ Single Postgres, every tenant-scoped table carries `tenant_id` (UUID, NOT NULL).
 
 The Spring Boot process exposes Spring MVC on port 8080. The surface is small and deliberate:
 
-- **`/oauth/callback`** — Google OAuth redirect target (not yet wired — see § Authentication). Spring MVC `@RestController` that exchanges the `code` for Google tokens, encrypts the refresh token, mints a tc-overwatch JWT, and returns it to the SPA (which stores it client-side and routes to the consent screen).
-- **`/api/auth/*`** — auth endpoints (`/me`, `/logout`, plus the local-only `/dev-login` stub).
+- **`/oauth2/authorization/{provider}` + `/login/oauth2/code/{provider}`** — Spring Security's OAuth2 start + callback paths. `google` registered today; additional providers join by config alone. Callback is handled by `OAuthSuccessHandler` (auth-feature). See § Authentication / Security.
+- **`/api/auth/*`** — auth endpoints (`/me`, `/logout`).
 - **`/actuator/health`** — Spring Actuator health endpoint for Docker / K8s liveness/readiness probes.
 
 The backend **does not serve the React SPA**. Frontend and backend are separate codebases and separate deploys (see *Frontend deployment* below).
@@ -118,7 +119,7 @@ Rationale (informed by past pain): tightly coupling frontend assets to backend d
 
 Where the frontend lives per environment:
 
-- **Local dev**: Vite dev server (`localhost:5173`) with a **Vite proxy** forwarding `/api/*` and `/oauth/*` to the backend on `localhost:8080`. Same-origin in the browser during dev — no CORS needed locally.
+- **Local dev**: Vite dev server (`localhost:5173`) with a **Vite proxy** forwarding `/api/*`, `/oauth2/*`, and `/login/oauth2/*` to the backend on `localhost:8080`. Same-origin in the browser during dev — no CORS needed locally.
 - **Unraid pilot**: separate `nginx`-based container hosting the static build, on its own Cloudflare Tunnel hostname (e.g. `app.example.com` for the frontend, `api.example.com` for the backend). Each tunnel hostname is independent; either can be deployed without touching the other.
 - **GCP production**: frontend built and pushed to **Cloud Storage + Cloud CDN** (or a small Cloud Run static container — pick later). Backend on GKE. Two distinct deploy pipelines.
 
@@ -194,7 +195,7 @@ docker compose up -d postgres        # Postgres 18 container, bound to localhost
 cd frontend && npm run dev           # Vite dev server on :5173
 ```
 
-- A separate Google Cloud OAuth client is used for local dev with `http://localhost:5173/oauth/callback` as an authorized redirect URI. The OAuth client *secret* never lives in `application-local.yml` (which is checked in) — it lives in `.env.local` (gitignored) or in an OS keyring that the local profile picks up via env vars.
+- A separate Google Cloud OAuth client is used for local dev with `http://localhost:8080/login/oauth2/code/google` as the authorized redirect URI (Spring Security's default callback path; the backend is the redirect target, not the SPA — the SPA then receives the minted JWT via fragment). The OAuth client *secret* never lives in `application-local.yml` (which is checked in) — it lives at `~/projects/tc-overwatch-secrets/local.env` (sibling to the repo, outside any path git can touch). IntelliJ run configs load it via the EnvFile plugin (see `.run/backend.run.xml`); CLI invocations source it manually before `./gradlew :server:bootRun`. Env var names: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
 - `docker-compose.local.yml` includes Postgres (and the role-init script under `scripts/db-init/`).
 - Background jobs run in-process during local dev (no separate worker container).
 
@@ -223,7 +224,7 @@ deploy/helm/tc-overwatch-server/
 - **Secrets**: GCP Secret Manager, surfaced into pods via External Secrets Operator. Never in `values.yaml`.
 - **Database**: Cloud SQL Postgres, connected via the Cloud SQL Auth Proxy as a sidecar in the backend pod. No public DB exposure.
 - **Frontend**: deployed *separately* from the backend — its own static bundle, either served from a tiny Nginx container or pushed to Cloud Storage + Cloud CDN. Independent deploy pipeline, independent rollback. Backend never bundles the SPA.
-- **OAuth client (prod)**: separate from local-dev client; redirect URI is the prod backend hostname (e.g. `https://api.example.com/oauth/callback`).
+- **OAuth client (prod)**: separate from local-dev client; redirect URI is the prod backend hostname (e.g. `https://api.example.com/login/oauth2/code/google`). One additional registration per IdP added.
 - **CI/CD**: TBD. Likely GitHub Actions → Artifact Registry image push → Helm upgrade. Not blocking; can ship the first version manually.
 
 ## Alternate deployment: private network (Unraid)
@@ -254,7 +255,7 @@ Cloudflare Tunnel is the recommended bridge from the public internet to the home
 
 - **No port forwarding** on the home router; the tunnel is initiated outbound from a `cloudflared` container.
 - **Free TLS** at the Cloudflare edge with a real public hostname (e.g. `tco.example.com` if the developer owns a domain, or a `*.trycloudflare.com` URL otherwise — prefer the owned domain).
-- **OAuth-friendly**: Google's OAuth flow needs a real HTTPS redirect URI; Cloudflare-fronted hostnames work transparently. Register the **backend** hostname (`api.example.com/oauth/callback`) as an authorized redirect URI in the Google OAuth client. Frontend and backend each get their own Cloudflare Tunnel hostname (e.g. `app.example.com` for frontend, `api.example.com` for backend) — fully independent; the bearer-token paradigm doesn't require shared parent domains.
+- **OAuth-friendly**: Google's OAuth flow needs a real HTTPS redirect URI; Cloudflare-fronted hostnames work transparently. Register the **backend** hostname (`api.example.com/login/oauth2/code/google`) as an authorized redirect URI in the Google OAuth client. Frontend and backend each get their own Cloudflare Tunnel hostname (e.g. `app.example.com` for frontend, `api.example.com` for backend) — fully independent; the bearer-token paradigm doesn't require shared parent domains.
 - **Cloudflare WAF + bot protection** (free tier) gives baseline edge protection comparable in *intent* to Cloud Armor, though not feature-equivalent.
 - **Cloudflare Access** (zero-trust application gate) is a free add-on if the developer wants an extra auth layer in front of the app during pilot — e.g. "only specific email addresses can even reach the login page." Probably overkill for invitation-only pilot but worth knowing it's there.
 
@@ -446,7 +447,7 @@ Invitation-only for MVP, implemented as a **configurable signup mode** (`invitat
 
 - `system_config` table (or feature-flag store) carries the current `signup_mode`. Server-side only; never branched on by the frontend.
 - `Invitation` table: `id`, `email`, `token`, `created_at`, `created_by`, `expires_at`, `accepted_at`, `tenant_id` (nullable until accepted).
-- Auth gate runs on the OAuth callback path (`AuthService.GoogleCallback` or equivalent). In `invitation` mode: authenticated email must match a pending `Invitation`. Mismatch → reject; no user/tenant is created.
+- Auth gate runs in `AuthService.signIn(verifiedEmail)`, called from `OAuthSuccessHandler` after Spring Security validates the OIDC id_token. In `invitation` mode: verified email must match a pending `Invitation`. Mismatch → 422 INVITATION_REQUIRED redirected to SPA; no user/tenant is created.
 - On match: mark invitation accepted, provision the tenant + user, return a session token to the frontend. Frontend then routes the user to the **first-sync consent** screen (separate flow — see `GOALS.md` Onboarding principle).
 - Invitation creation in v0 is via direct DB insert or a single admin RPC. No admin UI until SaaS.
 - New signup modes plug into the same gate by adding a check function (e.g. `subscriptionGate()` for `paid` mode).

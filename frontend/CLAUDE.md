@@ -23,7 +23,7 @@ Run from the repo root with `npm --prefix frontend run <script>` when chaining w
 
 ## Module-specific notes
 
-- **Vite proxy** in `vite.config.ts` forwards `/api/*` and `/oauth/*` to backend `localhost:8080`. Same-origin in the browser during dev — no CORS needed locally. Production uses cross-origin cookies under a shared parent domain; see `docs/architecture.md` § CORS.
+- **Vite proxy** in `vite.config.ts` forwards `/api/*`, `/oauth2/*`, and `/login/oauth2/*` to backend `localhost:8080`. Same-origin in the browser during dev — no CORS needed locally. Production is cross-origin under a shared parent domain; bearer tokens (not cookies) ride on every request, so no cross-origin cookie machinery is needed.
 - **Stack pinned in `docs/architecture.md` § Frontend** — the full pinned set: **TanStack Query v5+, Mantine v8+ (core + hooks; sub-packages per-feature), React Router v6.4+ with the Data Router, react-hook-form + Zod, Vitest + React Testing Library + MSW for HTTP mocking**. Install per-feature, not preemptively. Pin versions in `package.json` and update this file when you add one. See `docs/claude/react.md` for the patterns to follow.
 - **Path alias** `@/*` → `src/*` is wired (`tsconfig.app.json` `paths` + `vite.config.ts` `resolve.alias` + `@types/node`). Use it for everything imported from `src/`.
 - **ESLint flat config** lives in `eslint.config.js`. Lint failures break CI (the scaffold-era `continue-on-error: true` flag was removed once the first clean pass landed).
@@ -34,4 +34,4 @@ Run from the repo root with `npm --prefix frontend run <script>` when chaining w
 - **UI, routing, forms, client-side state** — here.
 - **Email parsing, classification, label application** — backend (it's where Gmail tokens live).
 - **Validation** — both layers. Backend enforces (Jakarta Bean Validation on the request DTO); frontend mirrors the backend rules (Zod) for fast feedback. Backend is the source of truth.
-- **Auth flow** — frontend redirects to backend `/oauth/...`, backend issues the session cookie; frontend never sees the access/refresh tokens.
+- **Auth flow** — frontend links `<a href="/oauth2/authorization/google">` (via Vite proxy) to start OAuth. Backend handles Google handshake, mints our HS256 session JWT, redirects to SPA root with the token in a URL fragment (`#token=…`). The SPA's `useOAuthTokenBridge` hook reads the fragment on mount, stores the token in localStorage, and clears the fragment via `history.replaceState`. Google's access/refresh tokens stay server-side; the SPA only ever sees our session JWT.

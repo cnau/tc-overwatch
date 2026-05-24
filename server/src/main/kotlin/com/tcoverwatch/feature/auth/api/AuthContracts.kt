@@ -11,17 +11,6 @@ data class MeResponse(
     val tenantId: UUID?,
 )
 
-data class LoginResponse(
-    val token: String,
-    val user: MeResponse,
-)
-
-data class DevLoginRequest(
-    @field:NotBlank
-    @field:Email
-    val email: String,
-)
-
 data class CreateInvitationRequest(
     @field:NotBlank
     @field:Email

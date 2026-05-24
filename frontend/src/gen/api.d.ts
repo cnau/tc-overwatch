@@ -52,22 +52,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/auth/dev-login": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["devLogin"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/dev/rls-probe": {
         parameters: {
             query?: never;
@@ -126,13 +110,11 @@ export interface components {
             /** Format: date-time */
             createdAt?: string;
         };
-        DevLoginRequest: {
-            /** Format: email */
-            email: string;
-        };
-        LoginResponse: {
-            token?: string;
-            user?: components["schemas"]["MeResponse"];
+        RlsProbeResponse: {
+            tenantBound?: boolean;
+            email?: string | null;
+            /** Format: uuid */
+            userId?: string | null;
         };
         MeResponse: {
             email?: string;
@@ -140,12 +122,6 @@ export interface components {
             userId?: string | null;
             /** Format: uuid */
             tenantId?: string | null;
-        };
-        RlsProbeResponse: {
-            tenantBound?: boolean;
-            email?: string | null;
-            /** Format: uuid */
-            userId?: string | null;
         };
     };
     responses: never;
@@ -219,30 +195,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-        };
-    };
-    devLogin: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DevLoginRequest"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LoginResponse"];
-                };
             };
         };
     };

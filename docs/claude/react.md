@@ -88,7 +88,7 @@ export function useCreateContact() {
 }
 ```
 
-`requestJson` pulls the bearer token from `localStorage` (via the helpers in `src/api/http.ts`) and sets `Authorization: Bearer <token>` on every authenticated call. Cross-origin in prod is straightforward — no cookie semantics, no `credentials: 'include'`, no shared-parent-domain requirement. The token is set by `useDevLogin` (and later, the real OAuth callback) and cleared by `useLogout`.
+`requestJson` pulls the bearer token from `localStorage` (via the helpers in `src/api/http.ts`) and sets `Authorization: Bearer <token>` on every authenticated call. Cross-origin in prod is straightforward — no cookie semantics, no `credentials: 'include'`, no shared-parent-domain requirement. The token is set by the OAuth callback (via the hash bridge in `src/hooks/useOAuthTokenBridge.ts`) and cleared by `useLogout`.
 
 **Error handling**: failed responses throw a typed `ApiError` carrying `code`, `message`, `status`, and optional `details`. UI code switches on `error.code` for branching (`if (err instanceof ApiError && err.code === 'CONFLICT') ...`) and renders `error.message` for display. Never parse the `message` text for branching — that's what `code` is for. Non-envelope failures (proxy errors, network) surface as `ApiError` with `code: 'HTTP_ERROR'`.
 

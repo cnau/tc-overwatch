@@ -2,11 +2,14 @@ import { Badge, Center, Container, Group, Loader, Stack, Title } from '@mantine/
 
 import { useMe } from '@/api/auth'
 import ApiErrorAlert from '@/components/ApiErrorAlert'
-import DevLoginCard from '@/components/DevLoginCard'
+import OAuthErrorAlert from '@/components/OAuthErrorAlert'
 import PingCard from '@/components/PingCard'
+import SignInCard from '@/components/SignInCard'
 import UserBadge from '@/components/UserBadge'
+import { useOAuthTokenBridge } from '@/hooks/useOAuthTokenBridge'
 
 export default function App() {
+  const oauthError = useOAuthTokenBridge()
   const me = useMe()
 
   return (
@@ -17,6 +20,8 @@ export default function App() {
           {me.data ? <UserBadge me={me.data} /> : <Badge color="blue" variant="light">scaffold</Badge>}
         </Group>
 
+        <OAuthErrorAlert error={oauthError} />
+
         {me.isPending && (
           <Center>
             <Loader />
@@ -25,7 +30,7 @@ export default function App() {
 
         {me.isError && <ApiErrorAlert error={me.error} title="Couldn't load session" />}
 
-        {!me.isPending && !me.data && <DevLoginCard />}
+        {!me.isPending && !me.data && <SignInCard />}
 
         {me.data && <PingCard />}
       </Stack>
