@@ -9,7 +9,7 @@
 `:server` is the Spring Boot 4 + Kotlin backend. It owns:
 
 - The HTTP/JSON API surface (Spring MVC `@RestController`s in `feature/<name>/api/`, at `/api/*`).
-- The OAuth callback, auth endpoints, and actuator health (per `docs/architecture.md` § HTTP surface).
+- The OAuth start/callback, auth endpoints, and actuator health (per `docs/architecture.md` § HTTP surface).
 - Business logic in feature-scoped services (`feature/<name>/service/`).
 - JPA persistence with Liquibase-managed schema (`feature/<name>/persistence/`, `src/main/resources/db/changelog/`).
 - Background jobs via the Postgres-backed work queue (per `docs/architecture.md` § Background jobs — none implemented yet).
@@ -30,9 +30,9 @@ Local dev assumes Postgres is up via `docker compose -f docker-compose.local.yml
 
 ## Ports
 
-- **8080** — Spring MVC. Serves `/api/*` (JSON API), `/oauth/*` (OAuth callback), `/actuator/*` (health probes).
+- **8080** — Spring MVC. Serves `/api/*` (JSON API), `/oauth2/authorization/*` + `/login/oauth2/code/*` (Spring Security OAuth start + callback), `/actuator/*` (health probes).
 
-The Vite dev server proxies `/api/*` and `/oauth/*` to `localhost:8080`, so the browser sees same-origin during local dev. CLI testing: `curl -X POST -H 'Content-Type: application/json' -d '{...}' http://localhost:8080/api/<path>`.
+The Vite dev server proxies `/api/*`, `/oauth2/*`, and `/login/oauth2/*` to `localhost:8080`, so the browser sees same-origin during local dev. CLI testing: `curl -X POST -H 'Content-Type: application/json' -d '{...}' http://localhost:8080/api/<path>`.
 
 ## Spring profiles
 

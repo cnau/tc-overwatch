@@ -64,3 +64,7 @@ auth:
     # Required. `auth.jwt.secret` comes from AUTH_JWT_SECRET (Secret Manager-backed
     # in prod); application-local.yml has its own value.
     token-lifetime: 7d
+
+# Where the OAuth success handler sends the SPA back. Profile-overridden.
+app:
+  frontend-base-url: ${APP_FRONTEND_BASE_URL:http://localhost:5173}

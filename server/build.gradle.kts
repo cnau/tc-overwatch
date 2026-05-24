@@ -39,9 +39,10 @@ dependencies {
     implementation(libs.springBoot.starter.actuator)
     implementation(libs.springBoot.starter.validation)
     implementation(libs.springBoot.starter.security)
-    // JWT encoder/decoder beans. Pulled in for the stub auth path; the same module
-    // covers Google OAuth resource-server validation when real OAuth lands.
+    // JWT encoder/decoder beans for the HS256 session token (our own, per-session).
     implementation(libs.springBoot.starter.oauth2.resource.server)
+    // OAuth2 client — Google sign-in (and any future IdP added by config alone).
+    implementation(libs.springBoot.starter.oauth2.client)
     // AOP for TenantBindingAspect. SB4 dropped starter-aop; aspectjweaver + transitive spring-aop is the equivalent.
     implementation(libs.aspectjweaver)
 

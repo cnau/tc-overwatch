@@ -191,12 +191,14 @@ Three profiles only: `local`, `unraid`, `prod`. Profile selection drives DB conn
 
 Strategy + JWT shape pinned in `architecture.md` § Authentication / Security. Operational rules:
 
-- `com.tcoverwatch.common.security.SecurityConfig` owns the single `SecurityFilterChain`. `JwtAuthenticationFilter` reads the `Authorization: Bearer <token>` header, validates via `JwtService.verify`, and populates `SecurityContextHolder` with a `JwtAuthenticationToken` whose principal is `AuthenticatedPrincipal(email, userId?, tenantId?)`.
-- **Stateless tokens — no cookies, no server-side sessions.** Login returns the JWT in the response body (`LoginResponse { token, user }`). Logout is a 204 no-op; the client discards the token. A server-side revocation list lands when there's a real reason.
+- **Three `SecurityFilterChain` beans, ordered**: `OAuthSecurityConfig` (Order(0), conditional on `GOOGLE_CLIENT_ID` env var) handles `/oauth2/authorization/**` + `/login/oauth2/code/**`; `DevSecurityConfig` (HIGHEST_PRECEDENCE, `@Profile("local")`) handles `POST /api/dev/invitations`; the main `SecurityConfig` chain (no matcher) handles everything else. Matchers don't overlap; ordering is for clarity.
+- `JwtAuthenticationFilter` (on the main chain) reads `Authorization: Bearer <token>`, validates via `JwtService.verify`, and populates `SecurityContextHolder` with a principal of `AuthenticatedPrincipal(email, userId?, tenantId?)`.
+- **Stateless tokens — no cookies, no server-side sessions** on the main chain. Login (dev stub or OAuth callback) returns the JWT in the response body or URL fragment. Logout is a 204 no-op; the client discards the token. A server-side revocation list lands when there's a real reason.
+- **OAuth handler is IdP-agnostic.** `OAuthSuccessHandler` extracts the verified email via the OIDC `OidcUser` interface — works for Google, Microsoft, Apple, Okta, Auth0. A non-OIDC provider (GitHub OAuth2) would extend the email resolver on the explicit seam in the handler. Adding a second provider = one `spring.security.oauth2.client.registration.*` block in `application.yml` + one SPA button.
 - Controllers read the principal via `@AuthenticationPrincipal principal: AuthenticatedPrincipal?` — never reach into `SecurityContextHolder` directly.
-- 401 / 403 from the security filter chain delegates to Spring MVC's `HandlerExceptionResolver` (via `@Lazy`-injected bean), which routes through `ApiErrorAdvice` so the response shape matches every other error envelope. Don't duplicate JSON serialization in the security layer.
-- `/api/auth/*` is the auth surface. Production endpoints (`/api/auth/me`, `/api/auth/logout`) live in `AuthController`. The stub login (`/api/auth/dev-login`) lives in a separate `DevAuthController` annotated `@Profile("local")` so it doesn't exist as a bean outside local dev.
-- Profile-gated controllers go in their own file — never mix `@Profile("local")` and unconditional `@RestController` classes in the same file. Different lifetimes deserve different files.
+- 401 / 403 from the main chain delegates to Spring MVC's `HandlerExceptionResolver` (via `@Lazy`-injected bean), which routes through `ApiErrorAdvice` so the response shape matches every other error envelope. Don't duplicate JSON serialization in the security layer.
+- `/api/auth/*` is the API auth surface. `AuthController` owns `/me` and `/logout`. `DevAuthController` owns `/dev-login` and is `@Profile("local")`.
+- Profile-gated or feature-gated security config goes in its own file — never mix conditional and unconditional `SecurityFilterChain` beans in the same file. Different lifetimes deserve different files.
 
 ## Anti-patterns
 
