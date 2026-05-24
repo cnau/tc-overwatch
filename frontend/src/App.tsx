@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Alert, Badge, Center, Container, Group, Loader, Stack, Title } from '@mantine/core'
 
 import { useMe } from '@/api/auth'
@@ -15,6 +16,8 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
 
 export default function App() {
   const oauthError = useOAuthTokenBridge()
+  const [oauthErrorDismissed, setOAuthErrorDismissed] = useState(false)
+  const showOAuthError = oauthError && !oauthErrorDismissed
   const me = useMe()
 
   return (
@@ -25,8 +28,13 @@ export default function App() {
           {me.data ? <UserBadge me={me.data} /> : <Badge color="blue" variant="light">scaffold</Badge>}
         </Group>
 
-        {oauthError && (
-          <Alert color="red" title="Sign-in didn't complete">
+        {showOAuthError && (
+          <Alert
+            color="red"
+            title="Sign-in didn't complete"
+            withCloseButton
+            onClose={() => setOAuthErrorDismissed(true)}
+          >
             {OAUTH_ERROR_MESSAGES[oauthError] ?? `Sign-in error: ${oauthError}`}
           </Alert>
         )}

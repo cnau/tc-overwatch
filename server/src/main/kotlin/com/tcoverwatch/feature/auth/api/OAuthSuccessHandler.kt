@@ -25,7 +25,8 @@ class OAuthSuccessHandler(
         try {
             val email = resolveVerifiedEmail(authentication.principal)
             val result = authService.signIn(email)
-            // URL fragment doesn't leave the browser; SPA bridge clears it via history.replaceState.
+            // Token rides the URL fragment: the redirect's Location header carries it,
+            // but it never appears on SPA subsequent requests; bridge clears it via replaceState.
             response.sendRedirect("$frontendBaseUrl/#token=${urlEncode(result.token)}")
         } catch (e: DomainException) {
             response.sendRedirect("$frontendBaseUrl/?error=${urlEncode(e.code)}")
