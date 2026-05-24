@@ -6,7 +6,13 @@ Stack: Spring Boot 4 + Kotlin 2.2 + JDK 21+, plain HTTP/JSON via Spring MVC `@Re
 
 ## Layer boundaries
 
-Controller → Service → DAO → Repository → Database. Strategic detail in `architecture.md` § Layered architecture. Operational rule: a service or controller that imports an `*Entity` class is broken layering — entities never leave the DAO. (Kotlin `internal` can't enforce this with the current single-module layout; it's a review-time check.)
+Controller → Service → DAO → Repository → Database. Strategic detail in `architecture.md` § Layered architecture.
+
+**NON-NEGOTIABLE: a controller never touches a Hibernate entity.** Not as a parameter, not as a return type, not as a local, not as an import. Controllers consume **services** (which expose DTOs) and produce **response DTOs**. A controller that imports a `feature/*/persistence/*Entity` class is broken layering and must be fixed before merge.
+
+The same applies, with one degree less force, between services and entities: services may *hold* an entity locally inside a `@Transactional` method that orchestrates persistence (the auth gate does this), but **service public method signatures never use entities** — only service-layer DTOs. The boundary is the method signature.
+
+Kotlin `internal` can't enforce this with the current single-module layout; it's a review-time check. The check is binary — entity in a controller signature or import = block.
 
 ## Feature layout
 
@@ -194,7 +200,7 @@ Strategy + JWT shape pinned in `architecture.md` § Authentication / Security. O
 
 ## Anti-patterns
 
-- Returning entities from controllers or services.
+- **Controllers touching entities, period.** No parameter, return type, local, or import — see § Layer boundaries. Same prohibition with one less degree of force for service public method signatures.
 - Wrapping controller responses in `ResponseEntity` — return the DTO, use `@ResponseStatus` for the code and `HttpServletResponse` for header side effects.
 - Skipping a layer (controller → DAO, service → repository).
 - Manual `WHERE tenant_id = ?` filters — RLS does it.
