@@ -150,9 +150,10 @@ Three profiles only: `local`, `unraid`, `prod`. Profile selection drives DB conn
 
 ## Security
 
-Strategy + cookie/JWT shape pinned in `architecture.md` § Authentication / Security. Operational rules:
+Strategy + JWT shape pinned in `architecture.md` § Authentication / Security. Operational rules:
 
-- `com.tcoverwatch.common.security.SecurityConfig` owns the single `SecurityFilterChain`. `JwtAuthenticationFilter` reads the `tco_session` cookie, validates via `JwtService.verify`, and populates `SecurityContextHolder` with a `JwtAuthenticationToken` whose principal is `AuthenticatedPrincipal(email, userId?, tenantId?)`.
+- `com.tcoverwatch.common.security.SecurityConfig` owns the single `SecurityFilterChain`. `JwtAuthenticationFilter` reads the `Authorization: Bearer <token>` header, validates via `JwtService.verify`, and populates `SecurityContextHolder` with a `JwtAuthenticationToken` whose principal is `AuthenticatedPrincipal(email, userId?, tenantId?)`.
+- **Stateless tokens — no cookies, no server-side sessions.** Login returns the JWT in the response body (`LoginResponse { token, user }`). Logout is a 204 no-op; the client discards the token. A server-side revocation list lands when there's a real reason.
 - Controllers read the principal via `@AuthenticationPrincipal principal: AuthenticatedPrincipal?` — never reach into `SecurityContextHolder` directly.
 - 401 / 403 from the security filter chain delegates to Spring MVC's `HandlerExceptionResolver` (via `@Lazy`-injected bean), which routes through `ApiErrorAdvice` so the response shape matches every other error envelope. Don't duplicate JSON serialization in the security layer.
 - `/api/auth/*` is the auth surface. Production endpoints (`/api/auth/me`, `/api/auth/logout`) live in `AuthController`. The stub login (`/api/auth/dev-login`) lives in a separate `DevAuthController` annotated `@Profile("local")` so it doesn't exist as a bean outside local dev.

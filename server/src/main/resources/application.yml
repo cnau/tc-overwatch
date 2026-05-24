@@ -61,5 +61,3 @@ auth:
     # Required. `auth.jwt.secret` comes from AUTH_JWT_SECRET (Secret Manager-backed
     # in prod); application-local.yml has its own value.
     token-lifetime: 7d
-  cookie:
-    secure: true  # local profile flips to false for plain-HTTP localhost

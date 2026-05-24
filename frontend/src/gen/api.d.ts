@@ -85,6 +85,10 @@ export interface components {
             /** Format: email */
             email: string;
         };
+        LoginResponse: {
+            token?: string;
+            user?: components["schemas"]["MeResponse"];
+        };
         MeResponse: {
             email?: string;
             /** Format: uuid */
@@ -162,7 +166,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MeResponse"];
+                    "application/json": components["schemas"]["LoginResponse"];
                 };
             };
         };

@@ -3,11 +3,14 @@ package com.tcoverwatch.common.security
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.springframework.http.HttpHeaders
 import org.springframework.security.authentication.AbstractAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
 import java.util.UUID
+
+private const val BEARER_PREFIX = "Bearer "
 
 @Component
 class JwtAuthenticationFilter(
@@ -18,7 +21,13 @@ class JwtAuthenticationFilter(
         response: HttpServletResponse,
         filterChain: FilterChain,
     ) {
-        val token = request.cookies?.firstOrNull { it.name == SESSION_COOKIE_NAME }?.value
+        val token =
+            request
+                .getHeader(HttpHeaders.AUTHORIZATION)
+                ?.takeIf { it.startsWith(BEARER_PREFIX) }
+                ?.removePrefix(BEARER_PREFIX)
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
         if (token != null) {
             jwtService.verify(token)?.let { jwt ->
                 // Missing email = corrupted/incompatible token. Treat as anonymous, don't NPE the principal.
