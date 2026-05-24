@@ -1,11 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { ApiError, clearAuthToken, requestJson, setAuthToken } from '@/api/http'
+import { ApiError, clearAuthToken, requestJson } from '@/api/http'
 import type { components } from '@/gen/api'
 
 export type MeResponse = components['schemas']['MeResponse']
-export type LoginResponse = components['schemas']['LoginResponse']
-export type DevLoginRequest = components['schemas']['DevLoginRequest']
 
 const authKeys = {
   me: ['auth', 'me'] as const,
@@ -21,15 +19,6 @@ async function fetchMe(): Promise<MeResponse | null> {
   }
 }
 
-async function devLogin(req: DevLoginRequest): Promise<MeResponse> {
-  const res = await requestJson<LoginResponse>('/api/auth/dev-login', {
-    method: 'POST',
-    body: JSON.stringify(req),
-  })
-  setAuthToken(res.token!)
-  return res.user!
-}
-
 async function logout(): Promise<void> {
   // Fire-and-forget the server endpoint (it's a no-op for stateless bearer
   // tokens, kept for symmetry / future server-side revocation), then clear
@@ -43,14 +32,6 @@ async function logout(): Promise<void> {
 }
 
 export const useMe = () => useQuery({ queryKey: authKeys.me, queryFn: fetchMe })
-
-export function useDevLogin() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: devLogin,
-    onSuccess: () => qc.invalidateQueries({ queryKey: authKeys.me }),
-  })
-}
 
 export function useLogout() {
   const qc = useQueryClient()
