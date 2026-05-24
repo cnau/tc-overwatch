@@ -74,6 +74,12 @@ class AuthService(
         return user.toSignInResult()
     }
 
+    // Tenant-scoped lookup of the current principal's user row — exists primarily
+    // to exercise TenantBindingAspect end-to-end via the dev probe endpoint, but
+    // is the right shape for any future "refresh me from DB" flow too.
+    @Transactional(readOnly = true)
+    fun findCurrentAppUser(userId: java.util.UUID): AppUser? = appUserRepository.findById(userId).orElse(null)
+
     private fun AppUser.toSignInResult(): SignInResult {
         val userId = requireNotNull(id) { "AppUser must have an id after save" }
         return SignInResult(

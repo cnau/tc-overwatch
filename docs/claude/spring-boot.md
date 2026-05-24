@@ -115,8 +115,11 @@ Thin. Derived query methods + `@Query` for one-off SQL. Complex queries → DAO.
 Strategy in `architecture.md` § Multi-tenancy. In code:
 
 - Never write `WHERE tenant_id = ?` — RLS filters automatically once `app.tenant_id` is set on the session.
-- Cross-tenant work goes through an explicit `withAdminConnection { ... }` block on the `tco_admin` pool. Grep-able, reviewable, rare.
-- Per-tenant background jobs `SET LOCAL app.tenant_id` before any DB work. A wrapper utility makes this automatic; forgetting it shows up as queries returning empty under RLS.
+- **`TenantBindingAspect` (in `com.tcoverwatch.common.multitenancy`) sets `app.tenant_id` automatically.** It fires INSIDE every `@Transactional` method (Spring's transactional advisor is pinned to `order = 0` in `MultiTenancyConfig`; the aspect is `@Order(1)`, so it wraps inside). Reads the current `SecurityContext`'s `AuthenticatedPrincipal.tenantId` and calls `set_config('app.tenant_id', tenantId, true)`. No principal → no-op (auth gate path still works).
+- **What this means for service code**: write `@Transactional` methods that do tenant-scoped queries normally — RLS handles tenant scoping invisibly. Don't manually call `set_config` unless you're inside a *cross-tenant* operation (the auth gate, system jobs).
+- **Cross-tenant lookups** (e.g., "is this email registered in any tenant?") route through a `SECURITY DEFINER` Postgres function — see `tco.find_app_user_by_email` in `fn-auth-lookups.sql`. Owned by `tco_migrate` (table owner), bypasses RLS, `search_path` locked to `tco, pg_temp`. Set this precedent for any future cross-tenant access.
+- **Pointcut limitation**: `@Transactional` declared on Spring Data repository methods (e.g., `JpaRepository.findById`) is matched only when the call goes through a Spring-managed service. Direct controller-to-repository calls bypass the aspect. Rule of thumb: controllers → services → repositories.
+- Per-tenant background jobs do their own `SET LOCAL app.tenant_id` before any DB work (no SecurityContext to read from). A small `withTenantContext(tenantId) { ... }` helper will land when the first background job does.
 
 ## Naming
 
