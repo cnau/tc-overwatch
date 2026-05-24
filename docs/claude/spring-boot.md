@@ -6,7 +6,13 @@ Stack: Spring Boot 4 + Kotlin 2.2 + JDK 21+, plain HTTP/JSON via Spring MVC `@Re
 
 ## Layer boundaries
 
-Controller → Service → DAO → Repository → Database. Strategic detail in `architecture.md` § Layered architecture. Operational rule: a service or controller that imports an `*Entity` class is broken layering — entities never leave the DAO. (Kotlin `internal` can't enforce this with the current single-module layout; it's a review-time check.)
+Controller → Service → DAO → Repository → Database. Strategic detail in `architecture.md` § Layered architecture.
+
+**NON-NEGOTIABLE: a controller never touches a Hibernate entity.** Not as a parameter, not as a return type, not as a local, not as an import. Controllers consume **services** (which expose DTOs) and produce **response DTOs**. A controller that imports a `feature/*/persistence/*Entity` class is broken layering and must be fixed before merge.
+
+The same applies, with one degree less force, between services and entities: services may *hold* an entity locally inside a `@Transactional` method that orchestrates persistence (the auth gate does this), but **service public method signatures never use entities** — only service-layer DTOs. The boundary is the method signature.
+
+Kotlin `internal` can't enforce this with the current single-module layout; it's a review-time check. The check is binary — entity in a controller signature or import = block.
 
 ## Feature layout
 
@@ -115,8 +121,11 @@ Thin. Derived query methods + `@Query` for one-off SQL. Complex queries → DAO.
 Strategy in `architecture.md` § Multi-tenancy. In code:
 
 - Never write `WHERE tenant_id = ?` — RLS filters automatically once `app.tenant_id` is set on the session.
-- Cross-tenant work goes through an explicit `withAdminConnection { ... }` block on the `tco_admin` pool. Grep-able, reviewable, rare.
-- Per-tenant background jobs `SET LOCAL app.tenant_id` before any DB work. A wrapper utility makes this automatic; forgetting it shows up as queries returning empty under RLS.
+- **`TenantBindingAspect` (in `com.tcoverwatch.common.multitenancy`) sets `app.tenant_id` automatically.** It fires INSIDE every `@Transactional` method (Spring's transactional advisor is pinned to `order = 0` in `MultiTenancyConfig`; the aspect is `@Order(1)`, so it wraps inside). Reads the current `SecurityContext`'s `AuthenticatedPrincipal.tenantId` and calls `set_config('app.tenant_id', tenantId, true)`. No principal → no-op (auth gate path still works).
+- **What this means for service code**: write `@Transactional` methods that do tenant-scoped queries normally — RLS handles tenant scoping invisibly. Don't manually call `set_config` unless you're inside a *cross-tenant* operation (the auth gate, system jobs).
+- **Cross-tenant lookups** (e.g., "is this email registered in any tenant?") route through a `SECURITY DEFINER` Postgres function — see `tco.find_app_user_by_email` in `fn-auth-lookups.sql`. Owned by `tco_migrate` (table owner), bypasses RLS, `search_path` locked to `tco, pg_temp`. Set this precedent for any future cross-tenant access.
+- **Pointcut limitation**: `@Transactional` declared on Spring Data repository methods (e.g., `JpaRepository.findById`) is matched only when the call goes through a Spring-managed service. Direct controller-to-repository calls bypass the aspect. Rule of thumb: controllers → services → repositories.
+- Per-tenant background jobs do their own `SET LOCAL app.tenant_id` before any DB work (no SecurityContext to read from). A small `withTenantContext(tenantId) { ... }` helper will land when the first background job does.
 
 ## Naming
 
@@ -191,7 +200,7 @@ Strategy + JWT shape pinned in `architecture.md` § Authentication / Security. O
 
 ## Anti-patterns
 
-- Returning entities from controllers or services.
+- **Controllers touching entities, period.** No parameter, return type, local, or import — see § Layer boundaries. Same prohibition with one less degree of force for service public method signatures.
 - Wrapping controller responses in `ResponseEntity` — return the DTO, use `@ResponseStatus` for the code and `HttpServletResponse` for header side effects.
 - Skipping a layer (controller → DAO, service → repository).
 - Manual `WHERE tenant_id = ?` filters — RLS does it.

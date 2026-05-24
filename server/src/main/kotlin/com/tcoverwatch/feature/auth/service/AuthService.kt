@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
+import java.util.UUID
 
 @Service
 class AuthService(
@@ -27,11 +28,15 @@ class AuthService(
 ) {
     @Transactional
     fun signIn(email: String): SignInResult {
-        // Normalize at the boundary — DB CHECK constraints enforce lowercase storage,
-        // and case-insensitive sign-in is the universal user expectation.
+        // Normalize at the boundary — DB CHECK enforces lowercase; sign-in is case-insensitive.
         val normalizedEmail = email.lowercase()
-        // Returning user: cross-tenant lookup (no tenant context yet pre-auth);
-        // RLS-scoped findByEmail would hide them.
+        // Serialize concurrent first sign-ins; otherwise two races both provision
+        // tenants before uq_app_user_email catches the user INSERT, leaving an orphan.
+        entityManager
+            .createNativeQuery("SELECT pg_advisory_xact_lock(hashtext(:email))")
+            .setParameter("email", normalizedEmail)
+            .singleResult
+        // Cross-tenant lookup: no tenant context yet pre-auth; RLS-scoped findByEmail would hide.
         appUserRepository.findByEmailCrossTenant(normalizedEmail)?.let { existing ->
             return existing.toSignInResult()
         }
@@ -41,6 +46,12 @@ class AuthService(
             SignupMode.PAID -> throw FailedPreconditionException("Paid sign-up is not yet implemented")
         }
     }
+
+    @Transactional
+    fun createInvitation(email: String): InvitationDto = invitationRepository.save(Invitation(email = email.lowercase())).toDto()
+
+    @Transactional(readOnly = true)
+    fun findCurrentAppUser(userId: UUID): AppUserDto? = appUserRepository.findById(userId).orElse(null)?.toDto()
 
     private fun acceptInvitationOrReject(email: String): SignInResult {
         val invitation =
@@ -55,18 +66,14 @@ class AuthService(
     ): SignInResult {
         val tenant = tenantRepository.save(Tenant())
         val tenantId = requireNotNull(tenant.id) { "tenant id missing after save() — @GeneratedValue should populate it" }
-        // Bind app.tenant_id for the rest of this transaction so RLS's WITH CHECK
-        // accepts the app_user INSERT. set_config(.., true) is transaction-scoped —
-        // released at commit/rollback. Hibernate auto-flushes the queued tenant
-        // INSERT before this native query runs, so the tenant row exists by the
-        // time the config is set, and the config remains in effect through commit
-        // when the user INSERT actually fires.
+        // Flush so subsequent ops see the tenant — don't rely on FlushMode.AUTO.
+        entityManager.flush()
+        // Pre-auth: no principal yet, so bind app.tenant_id ourselves for the app_user RLS WITH CHECK.
         entityManager
             .createNativeQuery("SELECT set_config('app.tenant_id', :tenantId, true)")
             .setParameter("tenantId", tenantId.toString())
             .singleResult
         val user = appUserRepository.save(AppUser(tenantId = tenantId, email = email))
-        // JPA dirty-checking writes these field changes at commit — no explicit save() needed.
         fromInvitation?.also {
             it.acceptedAt = Instant.now()
             it.tenantId = tenantId
@@ -83,4 +90,19 @@ class AuthService(
             tenantId = tenantId,
         )
     }
+
+    private fun AppUser.toDto(): AppUserDto =
+        AppUserDto(
+            id = requireNotNull(id) { "AppUser must have an id" },
+            email = email,
+            tenantId = tenantId,
+        )
+
+    private fun Invitation.toDto(): InvitationDto =
+        InvitationDto(
+            id = requireNotNull(id) { "id missing after save() — @GeneratedValue should populate it" },
+            email = email,
+            token = token,
+            createdAt = requireNotNull(createdAt) { "createdAt missing after save() — @CreatedDate auditing should populate it" },
+        )
 }

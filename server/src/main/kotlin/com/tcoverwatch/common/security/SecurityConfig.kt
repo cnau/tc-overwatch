@@ -19,8 +19,7 @@ class SecurityConfig {
     fun securityFilterChain(
         http: HttpSecurity,
         jwtAuthFilter: JwtAuthenticationFilter,
-        // Routes 401/403 through ApiErrorAdvice so the envelope matches the controller path.
-        // @Lazy dodges the early-binding chicken-and-egg.
+        // Routes 401/403 through ApiErrorAdvice for envelope parity; @Lazy dodges early-binding.
         @Qualifier("handlerExceptionResolver") @Lazy exceptionResolver: HandlerExceptionResolver,
     ): SecurityFilterChain {
         http

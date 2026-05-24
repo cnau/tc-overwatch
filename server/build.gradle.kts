@@ -42,6 +42,8 @@ dependencies {
     // JWT encoder/decoder beans. Pulled in for the stub auth path; the same module
     // covers Google OAuth resource-server validation when real OAuth lands.
     implementation(libs.springBoot.starter.oauth2.resource.server)
+    // AOP for TenantBindingAspect. SB4 dropped starter-aop; aspectjweaver + transitive spring-aop is the equivalent.
+    implementation(libs.aspectjweaver)
 
     // OpenAPI 3 spec + Swagger UI. Auto-walks @RestControllers — no annotations required
     // on existing code. See docs/claude/spring-boot.md § OpenAPI for the field-doc convention.

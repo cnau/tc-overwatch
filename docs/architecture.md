@@ -86,7 +86,7 @@ If a future service-to-service caller actually needs a typed RPC contract, revis
 
 ### Multi-tenancy in the request pipeline
 
-Single Postgres, every tenant-scoped table carries `tenant_id` (UUID, NOT NULL). **RLS is enforced from day one** — full details in *Multi-tenancy* section below. A `TenantContext` interceptor on every request derives the tenant from the authenticated session and sets `app.tenant_id` on the DB session via `SET LOCAL` at transaction start.
+Single Postgres, every tenant-scoped table carries `tenant_id` (UUID, NOT NULL). **RLS is enforced from day one** — full details in *Multi-tenancy* section below. `TenantBindingAspect` (Spring AOP, in `com.tcoverwatch.common.multitenancy`) wraps every `@Transactional` method, reads the authenticated principal's `tenantId` from `SecurityContextHolder`, and calls `set_config('app.tenant_id', …, true)` so RLS sees the right tenant. Pinned to fire INSIDE the transaction via `MultiTenancyConfig`'s `@EnableTransactionManagement(order = 0)` paired with `@Order(1)` on the aspect. Anonymous calls (`/api/auth/dev-login`, the local dev `POST /api/dev/invitations` seeder) hit the aspect, find no principal, no-op — the auth gate handles its own transaction-local binding before inserting `app_user`.
 
 ### Locked-in defaults
 
@@ -413,7 +413,7 @@ Developer runs `gradle bootRun` and `vite dev` from their laptop against a local
     USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
   ```
   In practice migrations call `SELECT tco.enable_tenant_isolation('[table_name]')` — see `docs/claude/liquibase.md` § Tenant-scoped table template. `NULLIF` is required: `current_setting(.., true)` returns `''` (not NULL) when the setting is unset, and `''::uuid` throws.
-- The Spring Boot request pipeline sets `app.tenant_id` on the Postgres session at the start of each transaction, derived from the authenticated user. A small `@Component` `TenantConnectionInterceptor` (or equivalent JPA listener) executes `SET LOCAL app.tenant_id = '<uuid>'` on connection acquisition; the value is cleared at transaction end.
+- The Spring Boot request pipeline sets `app.tenant_id` on the Postgres session at the start of each transaction, derived from the authenticated user. `TenantBindingAspect` (a Spring AOP `@Around` advice on `@Transactional` methods) reads the principal's `tenantId` from `SecurityContextHolder` and calls `set_config('app.tenant_id', <uuid>, true)` — the `true` makes it transaction-LOCAL, released at commit/rollback. The aspect is ordered to fire INSIDE the transaction (advisor `order = 0`, aspect `@Order(1)`) so the binding sits between BEGIN and any query.
 - Migrations declare RLS policies alongside the tables they protect (Liquibase (Groovy DSL) migrations include both `CREATE TABLE` and `CREATE POLICY` in the same file).
 - Tests use Testcontainers Postgres with the same RLS policies enabled; a test must explicitly set the tenant context to read/write rows, which catches cross-tenant bugs at unit-test time.
 
