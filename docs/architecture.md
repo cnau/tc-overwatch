@@ -74,12 +74,14 @@ If a future service-to-service caller actually needs a typed RPC contract, revis
 
 ### Authentication / Security
 
-- **Spring Security** (Spring Security 7, paired with Spring Boot 4) — current wiring is the JWT-cookie path; will gain Google OAuth2 client on top in a later PR.
-- **Session = HTTP-only `SameSite=Lax` cookie (`tco_session`)** carrying an HS256-signed JWT with `email`, optional `userId`, optional `tenantId`. Backend validates on every request via a filter that populates the `SecurityContext` with an `AuthenticatedPrincipal`. `Secure` flag is config-driven (false in local, true in unraid/prod).
-- **JWT signing secret** comes from config (`auth.jwt.secret`) — env var / Secret Manager in non-local profiles, hardcoded local-only value in `application-local.yml`. HS256 today; revisit RS256 + JWKS if cross-service token validation ever becomes a need.
-- **Stub login** (`POST /api/auth/dev-login`) is profile-gated to `local` — accepts any well-formed email and mints a JWT. Replaced by the real OAuth callback + invitation gate when those land.
-- **Refresh tokens** (Google's) will be encrypted at the application layer with a KEK (from Secret Manager on GCP / `.env` on Unraid) before persisting to Postgres. Not yet wired — the stub auth path has no refresh tokens to store.
-- **No CSRF tokens** in v0 — `SameSite=Lax` + the SPA's same-parent-domain layout is the defense. Revisit if a third-party form-post surface ever lands.
+- **Spring Security** (Spring Security 7, paired with Spring Boot 4) — JWTs in `Authorization: Bearer <token>` headers; will gain Google OAuth2 client on top in a later PR.
+- **Bearer-token paradigm, no session cookies.** The backend mints an HS256-signed JWT with `email`, optional `userId`, optional `tenantId`. Clients send it on every request as `Authorization: Bearer <token>`. The filter populates `SecurityContext` with an `AuthenticatedPrincipal`. **Stateless on the server** — no session storage, no cookie machinery.
+- **JWT signing secret** comes from config (`auth.jwt.secret`) — env var / Secret Manager in non-local profiles, hardcoded local-only value in `application-local.yml`. HS256 today; switch to RS256 + JWKS when real Google OAuth lands (Google's IdP becomes the issuer, we become a resource server).
+- **Stub login** (`POST /api/auth/dev-login`) is profile-gated to `local` — accepts any well-formed email and returns `{token, user}`. Replaced by the real OAuth callback + invitation gate when those land.
+- **Logout** (`POST /api/auth/logout`) is a 204 no-op — stateless tokens don't need server-side teardown. Client discards its stored token. A server-side revocation list lands when there's a reason to invalidate before expiry.
+- **Refresh tokens** (Google's) will be encrypted at the application layer with a KEK (from Secret Manager on GCP / `.env` on Unraid) before persisting to Postgres. Not yet wired.
+- **CSRF**: not applicable in the bearer paradigm — no ambient credentials for a browser to attach to a forged cross-origin request.
+- **Browser token storage trade-off**: the SPA holds the token in `localStorage`. This is XSS-exfiltrable in principle; mitigated at the SPA's CSP layer + careful dependency vetting, not at the token level. The deliberate choice here is **one auth paradigm across web + mobile** (iOS later) — HttpOnly-cookie auth would have been more XSS-resistant for the web alone but would have forced a sibling bearer path for mobile. We chose paradigm uniformity now.
 
 ### Multi-tenancy in the request pipeline
 
@@ -101,8 +103,8 @@ Single Postgres, every tenant-scoped table carries `tenant_id` (UUID, NOT NULL).
 
 The Spring Boot process exposes Spring MVC on port 8080. The surface is small and deliberate:
 
-- **`/oauth/callback`** — Google OAuth redirect target. Spring MVC `@RestController` that exchanges the `code` for tokens, encrypts the refresh token, creates a session, and issues a 302 to the frontend SPA's root URL with the session cookie set.
-- **`/api/auth/*`** — any other HTTP-only auth endpoints (logout, session refresh) as needed.
+- **`/oauth/callback`** — Google OAuth redirect target (not yet wired — see § Authentication). Spring MVC `@RestController` that exchanges the `code` for Google tokens, encrypts the refresh token, mints a tc-overwatch JWT, and returns it to the SPA (which stores it client-side and routes to the consent screen).
+- **`/api/auth/*`** — auth endpoints (`/me`, `/logout`, plus the local-only `/dev-login` stub).
 - **`/actuator/health`** — Spring Actuator health endpoint for Docker / K8s liveness/readiness probes.
 
 The backend **does not serve the React SPA**. Frontend and backend are separate codebases and separate deploys (see *Frontend deployment* below).
@@ -119,24 +121,21 @@ Where the frontend lives per environment:
 - **Unraid pilot**: separate `nginx`-based container hosting the static build, on its own Cloudflare Tunnel hostname (e.g. `app.example.com` for the frontend, `api.example.com` for the backend). Each tunnel hostname is independent; either can be deployed without touching the other.
 - **GCP production**: frontend built and pushed to **Cloud Storage + Cloud CDN** (or a small Cloud Run static container — pick later). Backend on GKE. Two distinct deploy pipelines.
 
-### CORS and cross-origin sessions
+### CORS for cross-origin SPA
 
-Because frontend and backend live on different origins, CORS rules and cross-origin session cookies are part of day-one config:
+Because frontend and backend live on different origins, CORS is a day-one config — but it's simpler in the bearer paradigm than it would be with session cookies (no `Allow-Credentials`, no parent-domain alignment, no SameSite considerations):
 
 - **Backend CORS allowlist** (Spring Security) is per-profile:
   - `local`: `http://localhost:5173` (Vite dev) — though the Vite proxy makes this rarely hit
   - `unraid`: the public frontend hostname (e.g. `https://app.example.com`)
   - `prod`: production frontend hostname(s)
-- **`Access-Control-Allow-Credentials: true`** on backend responses so cookies flow.
-- **Session cookie attributes**: `HttpOnly; Secure; SameSite=None; Domain=.example.com` so the browser sends the cookie on cross-origin requests within the registered parent domain. Frontend and backend hostnames **must share a parent domain** (e.g. `app.example.com` + `api.example.com` both under `.example.com`).
-- **`fetch` calls** use `credentials: 'include'` so the browser attaches cookies on every API call.
-- **CSRF**: `SameSite=None; Secure` cookies + a custom `Content-Type: application/json` (browsers won't send cross-origin without preflight) + an explicit origin check on the OAuth callback is sufficient for v0. If we ever need stricter posture, switching from session cookies to **Bearer tokens in the `Authorization` header** is a clean upgrade.
+- **`Access-Control-Allow-Headers`** includes `Authorization` and `Content-Type`. Browsers preflight any request with a non-simple header.
+- **No `Access-Control-Allow-Credentials: true`** — we send the JWT in the `Authorization` header, not via cookies. Browsers don't need to attach ambient credentials.
+- **Frontend and backend can live on entirely separate domains** — no parent-domain requirement.
 
-### Why not Bearer tokens from day one?
+### Why bearer tokens, not session cookies
 
-Bearer tokens (issued at OAuth-callback time, stored in frontend memory, sent on every API call) avoid cross-origin cookie semantics entirely and are arguably more standard for SaaS APIs. Trade-off: storing the token safely in the frontend (memory-only, never localStorage; refresh-on-load via a short-lived "is the session still good?" call) adds frontend complexity that cookie-based sessions don't need.
-
-Cookies win for v0 because the auth complexity is centralized in the backend and the parent-domain requirement is a one-time DNS decision. Revisit if SaaS goes mobile (where bearer tokens are friendlier) or if a security review demands it.
+Bearer tokens stored client-side (JWT in `localStorage` for the SPA, Keychain for iOS) feed both web and mobile clients with one paradigm. The alternative — HttpOnly session cookies for the SPA — would have been more XSS-resistant for the web alone, but would have required a sibling bearer path the moment iOS became real. We chose paradigm uniformity now; the XSS exposure is accepted and mitigated at the SPA's CSP + dependency-vetting layer, not at the token-storage layer.
 
 ## API — HTTP / JSON
 
@@ -254,7 +253,7 @@ Cloudflare Tunnel is the recommended bridge from the public internet to the home
 
 - **No port forwarding** on the home router; the tunnel is initiated outbound from a `cloudflared` container.
 - **Free TLS** at the Cloudflare edge with a real public hostname (e.g. `tco.example.com` if the developer owns a domain, or a `*.trycloudflare.com` URL otherwise — prefer the owned domain).
-- **OAuth-friendly**: Google's OAuth flow needs a real HTTPS redirect URI; Cloudflare-fronted hostnames work transparently. Register the **backend** hostname (`api.example.com/oauth/callback`) as an authorized redirect URI in the Google OAuth client. Frontend and backend each get their own Cloudflare Tunnel hostname (e.g. `app.example.com` for frontend, `api.example.com` for backend) — independent, parent-domain-shared so session cookies work cross-origin.
+- **OAuth-friendly**: Google's OAuth flow needs a real HTTPS redirect URI; Cloudflare-fronted hostnames work transparently. Register the **backend** hostname (`api.example.com/oauth/callback`) as an authorized redirect URI in the Google OAuth client. Frontend and backend each get their own Cloudflare Tunnel hostname (e.g. `app.example.com` for frontend, `api.example.com` for backend) — fully independent; the bearer-token paradigm doesn't require shared parent domains.
 - **Cloudflare WAF + bot protection** (free tier) gives baseline edge protection comparable in *intent* to Cloud Armor, though not feature-equivalent.
 - **Cloudflare Access** (zero-trust application gate) is a free add-on if the developer wants an extra auth layer in front of the app during pilot — e.g. "only specific email addresses can even reach the login page." Probably overkill for invitation-only pilot but worth knowing it's there.
 
@@ -509,8 +508,8 @@ Only the edge LB has a public IP. Everything else is private and reachable only 
 ### Authentication / authorization at the API boundary
 
 - **Spring Security filter chain** runs on every request, default-deny. Method/path authorization rules opt in via annotations or filter-chain config; unauthenticated endpoints (e.g. the OAuth callback handler) are an explicit allowlist.
-- **Session model**: HTTP-only, Secure, SameSite=Lax cookie carries an opaque session token. Backend looks up the session server-side; no JWT verification dance for v0.
-- **CSRF**: `Content-Type: application/json` + SameSite cookies + an explicit origin check on the OAuth callback is sufficient for v0. The OAuth callback path uses the standard `state` parameter to prevent CSRF on that specific HTTP flow.
+- **Session model**: stateless bearer tokens — HS256-signed JWTs delivered in `Authorization: Bearer <token>` headers, stored client-side (localStorage on web, Keychain on iOS later). See § Authentication / Security for the full rationale.
+- **CSRF**: not applicable in the bearer paradigm. The OAuth callback path uses the standard `state` parameter to prevent CSRF on that specific HTTP flow.
 - **Admin RPCs** require not just authentication but explicit admin-role membership on the authenticated user; checked at the interceptor. Admin RPCs are also the only entry points that may eventually call `withAdminConnection { ... }` for DB access.
 
 ### Observability for security
@@ -531,7 +530,7 @@ Only the edge LB has a public IP. Everything else is private and reachable only 
 - Secret Manager + External Secrets Operator
 - NetworkPolicies (default-deny)
 - Pod Security Restricted, distroless images, non-root containers
-- Spring Security filter chain, session cookies, CSRF protection on the OAuth callback
+- Spring Security filter chain, bearer-token JWT validation, `state` parameter on the OAuth callback for CSRF defense on that specific flow
 - Cloud Audit Logs on, structured logging with PII discipline
 
 **Later (deliberately deferred)**:

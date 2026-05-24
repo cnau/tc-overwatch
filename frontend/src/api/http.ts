@@ -12,6 +12,16 @@ export class ApiError extends Error {
   }
 }
 
+// Bearer token persists across browser restarts (mirroring how iOS Keychain
+// persists across app restarts — *lifecycle* parallel, not a security claim).
+// XSS exfiltration risk is accepted; mitigations live at the SPA's CSP +
+// dependency-vetting level, not at the token-storage level.
+const TOKEN_KEY = 'tco_auth_token'
+
+export const getAuthToken = (): string | null => localStorage.getItem(TOKEN_KEY)
+export const setAuthToken = (token: string): void => localStorage.setItem(TOKEN_KEY, token)
+export const clearAuthToken = (): void => localStorage.removeItem(TOKEN_KEY)
+
 type ApiErrorBody = {
   code?: unknown
   message?: unknown
@@ -23,9 +33,12 @@ export async function requestJson<T>(input: RequestInfo | URL, init: RequestInit
   if (!headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
+  const token = getAuthToken()
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
   const res = await fetch(input, {
     ...init,
-    credentials: 'include',
     headers,
   })
 
@@ -33,7 +46,6 @@ export async function requestJson<T>(input: RequestInfo | URL, init: RequestInit
     throw await parseError(res)
   }
 
-  // 204 No Content — caller's `T` should be `void`, but the cast is on them.
   if (res.status === 204) return undefined as T
   return (await res.json()) as T
 }
@@ -52,7 +64,7 @@ async function parseError(res: Response): Promise<ApiError> {
         )
       }
     } catch {
-      // fall through — non-JSON body (proxy error page, etc.)
+      // non-JSON body (proxy error page, etc.)
     }
   }
   return new ApiError(

@@ -24,7 +24,7 @@ class SecurityConfig {
         @Qualifier("handlerExceptionResolver") @Lazy exceptionResolver: HandlerExceptionResolver,
     ): SecurityFilterChain {
         http
-            // SameSite=Lax + same-parent-domain layout is the defense.
+            // Bearer tokens have no ambient browser credential to forge — CSRF doesn't apply.
             .csrf(AbstractHttpConfigurer<*, *>::disable)
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests {

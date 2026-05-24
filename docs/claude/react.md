@@ -52,7 +52,7 @@ One file per backend domain in `src/api/`. Each file exports:
 
 **The `requestJson` call is module-private — never exported.** Only the hooks are the public surface. A consumer that imports the raw fetch fn skips TanStack Query's cache, deduplication, retry policy, and the `ApiError` envelope parsing. Keeping it unexported makes that bypass structurally impossible.
 
-All backend calls go through the shared `requestJson<T>` helper in `src/api/http.ts`. It handles `Content-Type`, `credentials: 'include'`, JSON parsing, and converts the backend's `{ code, message, details? }` error envelope into a typed `ApiError` (also exported from `src/api/http.ts`). Components never call `fetch` directly — always go through `src/api/<domain>.ts`. Mutations invalidate relevant queries by query key on success.
+All backend calls go through the shared `requestJson<T>` helper in `src/api/http.ts`. It handles `Content-Type`, injects the bearer token via `Authorization: Bearer <token>` when one is stored locally, parses JSON, and converts the backend's `{ code, message, details? }` error envelope into a typed `ApiError` (also exported from `src/api/http.ts`). Components never call `fetch` directly — always go through `src/api/<domain>.ts`. Mutations invalidate relevant queries by query key on success.
 
 ```ts
 // src/api/contacts.ts
@@ -84,7 +84,7 @@ export function useCreateContact() {
 }
 ```
 
-`requestJson` sets `credentials: 'include'` so the session cookie rides on every call. Cross-origin in prod relies on a shared parent domain (see `architecture.md` § CORS). In dev, the Vite proxy makes `/api/*` same-origin so the flag is a no-op but stays for prod consistency.
+`requestJson` pulls the bearer token from `localStorage` (via the helpers in `src/api/http.ts`) and sets `Authorization: Bearer <token>` on every authenticated call. Cross-origin in prod is straightforward — no cookie semantics, no `credentials: 'include'`, no shared-parent-domain requirement. The token is set by `useDevLogin` (and later, the real OAuth callback) and cleared by `useLogout`.
 
 **Error handling**: failed responses throw a typed `ApiError` carrying `code`, `message`, `status`, and optional `details`. UI code switches on `error.code` for branching (`if (err instanceof ApiError && err.code === 'CONFLICT') ...`) and renders `error.message` for display. Never parse the `message` text for branching — that's what `code` is for. Non-envelope failures (proxy errors, network) surface as `ApiError` with `code: 'HTTP_ERROR'`.
 
