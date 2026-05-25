@@ -25,6 +25,8 @@ class SecurityConfig {
         http
             // Bearer tokens have no ambient browser credential to forge — CSRF doesn't apply.
             .csrf(AbstractHttpConfigurer<*, *>::disable)
+            // Picks up the CorsConfigurationSource bean defined in CorsConfig.
+            .cors { }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests {
                 it
