@@ -67,8 +67,7 @@ services:
         condition: service_completed_successfully
     networks:
       - tco-net
-    # Healthcheck deferred: the eclipse-temurin:23-jre base lacks curl/wget,
-    # and nothing else in the stack currently depends_on backend's health.
+    # Healthcheck is declared in server/Dockerfile (image-level HEALTHCHECK).
 
   cloudflared:
     # To bump: docker pull cloudflare/cloudflared:<new-tag>; copy the printed digest here.
@@ -82,7 +81,7 @@ services:
       frontend:
         condition: service_healthy
       backend:
-        condition: service_started
+        condition: service_healthy
     networks:
       - tco-net
 
