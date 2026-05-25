@@ -11,8 +11,12 @@
 # strings. The .env file lives at /mnt/user/tco/.env with mode 0600, outside
 # the repo. See .env.unraid.example for the required keys.
 #
-# cloudflared (Cloudflare Tunnel connector) is still deferred — blocked on
-# tunnel hostname registration (#74) and the production OAuth client (#75).
+# Cloudflare-side setup happens out-of-band in the Zero Trust dashboard:
+# create a tunnel (Networks → Tunnels), copy its token into TUNNEL_TOKEN in
+# /mnt/user/tco/.env, and add two public hostnames inside that tunnel:
+#   app.<domain> → HTTP → frontend:80
+#   api.<domain> → HTTP → backend:8080
+# Routing config lives in the dashboard, not here.
 
 services:
   postgres:
@@ -65,6 +69,22 @@ services:
       - tco-net
     # Healthcheck deferred: the eclipse-temurin:23-jre base lacks curl/wget,
     # and nothing else in the stack currently depends_on backend's health.
+
+  cloudflared:
+    # To bump: docker pull cloudflare/cloudflared:<new-tag>; copy the printed digest here.
+    image: cloudflare/cloudflared:2026.5.1@sha256:a5b5e6fd9a372f054b9a843c219bfbcdceb54691605312a8b1ee72978bdf1aa1
+    container_name: tco-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?missing — pass --env-file /mnt/user/tco/.env}
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    networks:
+      - tco-net
 
   frontend:
     image: ghcr.io/cnau/tc-overwatch-frontend:main
