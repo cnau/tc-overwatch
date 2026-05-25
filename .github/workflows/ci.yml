@@ -168,3 +168,14 @@ jobs:
           push: true
           tags: ${{ steps.tags.outputs.tags }}
 
+      # Stop GHCR from accumulating every commit's image forever. Keep the
+      # 5 most recent versions (latest carries :main + :sha-<short>; older
+      # 4 keep only their :sha-<short>). When we move to tagged releases,
+      # this prune can be tightened to keep :v* tags indefinitely.
+      - name: Prune old image versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: tc-overwatch-server
+          package-type: container
+          min-versions-to-keep: 5
+
