@@ -9,6 +9,14 @@ spring:
     password: ${TCO_APP_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
+# Cloudflare Tunnel terminates TLS at the edge and forwards plain HTTP to the
+# backend with X-Forwarded-Proto: https. NATIVE = Tomcat's RemoteIpValve trusts
+# X-Forwarded-* from upstream IPs (default trust list includes 172.16/12 — the
+# Docker bridge range cloudflared connects from). Without this, Spring builds
+# OAuth redirect_uri as http://... and Google rejects with redirect_uri_mismatch.
+server:
+  forward-headers-strategy: NATIVE
+
 auth:
   jwt:
     secret: ${AUTH_JWT_SECRET}
