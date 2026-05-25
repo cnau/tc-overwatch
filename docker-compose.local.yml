@@ -1,8 +1,8 @@
-# Local-dev infrastructure. Bring up Postgres before running the server.
+# Local-dev infrastructure. Bring up Postgres + apply migrations, then run the
+# backend from your IDE or the CLI:
 #
-#   docker compose -f docker-compose.local.yml up -d
-#
-# Then run the server from your IDE or:
+#   docker compose -f docker-compose.local.yml up -d postgres
+#   docker compose -f docker-compose.local.yml run --rm migrate
 #   ./gradlew :server:bootRun --args='--spring.profiles.active=local'
 #
 # Frontend separately:
@@ -28,6 +28,24 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+
+  # One-shot Liquibase runner. `image:` pulls from GHCR for normal use;
+  # `build:` lets local devs `docker compose build migrate` before the image
+  # has been published. Invoke via `docker compose run --rm migrate`.
+  migrate:
+    image: ghcr.io/cnau/tc-overwatch-migrate:main
+    build:
+      context: .
+      dockerfile: migrate/Dockerfile
+    container_name: tco-migrate
+    restart: "no"
+    environment:
+      LIQUIBASE_COMMAND_URL: jdbc:postgresql://postgres:5432/tco
+      LIQUIBASE_COMMAND_USERNAME: tco_migrate
+      LIQUIBASE_COMMAND_PASSWORD: tco_migrate_local_password
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   tco-postgres-data:

@@ -11,7 +11,7 @@
 - The HTTP/JSON API surface (Spring MVC `@RestController`s in `feature/<name>/api/`, at `/api/*`).
 - The OAuth start/callback, auth endpoints, and actuator health (per `docs/architecture.md` § HTTP surface).
 - Business logic in feature-scoped services (`feature/<name>/service/`).
-- JPA persistence with Liquibase-managed schema (`feature/<name>/persistence/`, `src/main/resources/db/changelog/`).
+- JPA persistence (`feature/<name>/persistence/`). The schema is owned by the **separate `migrate` Docker image** (`migrate/Dockerfile`); changelogs at `src/main/resources/db/changelog/` are read by that image at build time. Liquibase is intentionally not on the server's classpath.
 - Background jobs via the Postgres-backed work queue (per `docs/architecture.md` § Background jobs — none implemented yet).
 
 ## Commands
@@ -27,7 +27,15 @@
 docker build -t tc-overwatch-server:dev -f server/Dockerfile .  # build runtime image
 ```
 
-Local dev assumes Postgres is up via `docker compose -f docker-compose.local.yml up -d postgres`.
+Local dev sequence:
+
+```
+docker compose -f docker-compose.local.yml up -d --wait postgres
+docker compose -f docker-compose.local.yml run --rm migrate     # one-shot Liquibase
+./gradlew :server:bootRun --args='--spring.profiles.active=local'
+```
+
+Migrations live in the `tc-overwatch-migrate` image (`migrate/Dockerfile`). While the image isn't yet on GHCR (pre-merge), first-time local devs run `docker compose -f docker-compose.local.yml build migrate` to compile it locally; afterwards `compose pull migrate` keeps it fresh.
 
 ## Ports
 

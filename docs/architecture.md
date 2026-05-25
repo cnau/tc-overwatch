@@ -10,7 +10,7 @@ The implementation stack. Decisions locked here are the result of explicit requi
 | JVM | 21+ | Spring Boot 4 requires it |
 | Backend | Spring Boot 4.0.6 + Kotlin | Bleeding edge — watch third-party compat |
 | Database | Postgres 18 | `pg_trgm` for fuzzy match, `JSONB` for flexible fields |
-| Migrations | Liquibase (Groovy DSL) | Changelogs in `src/main/resources/db/changelog/`; runs via the `migrate` one-shot container as `tco_migrate` |
+| Migrations | Liquibase (Groovy DSL) | Changelogs in `server/src/main/resources/db/changelog/`, baked into the dedicated `tc-overwatch-migrate` Docker image (`migrate/Dockerfile`). Runs as the `tco_migrate` role; not on the server's classpath. |
 | API wire format | HTTP / JSON | Spring MVC `@RestController` + Jackson |
 | Frontend | React + TypeScript + Vite | TanStack Query + `fetch` |
 | Background jobs | Postgres-backed queue (Spring `@Scheduled` + `LISTEN/NOTIFY`) | Upgrade to Temporal only if SaaS scale demands |
@@ -26,7 +26,7 @@ The implementation stack. Decisions locked here are the result of explicit requi
 ### Persistence and ORM
 
 - **Spring Data JPA + Hibernate** for persistence.
-- **Liquibase (Groovy DSL)** for schema migrations. Changelogs in `src/main/resources/db/changelog/`. Run by a one-shot `migrate` container in the deploy workflow as the `tco_migrate` role, never on app startup.
+- **Liquibase (Groovy DSL)** for schema migrations. Changelogs in `server/src/main/resources/db/changelog/`. Run by a **dedicated `tc-overwatch-migrate` Docker image** (`migrate/Dockerfile`, based on the upstream `liquibase/liquibase` image) — the server's classpath is intentionally Liquibase-free. The migrate container runs to completion as the `tco_migrate` role before the backend starts, in every environment (local-dev, Unraid pilot, GCP prod).
 
 ### Layered architecture
 
@@ -294,35 +294,35 @@ Schema, code, and business logic don't change at all — only the deployment env
 
 ## CI/CD
 
-GitHub Actions for the pipeline; GitHub Container Registry (GHCR) for the image. One built image is the artifact for *both* deployment paths (Unraid pilot now, GCP later) — no per-environment image variants. Promotion is "did the same image deploy successfully to environment X?"
+GitHub Actions for the pipeline; GitHub Container Registry (GHCR) for the images. Each built image is the artifact for *both* deployment paths (Unraid pilot now, GCP later) — no per-environment image variants. Promotion is "did the same image deploy successfully to environment X?"
 
 ### Pipeline shape
 
-**Two parallel build pipelines** (one per codebase), each with its own deploy fan-out:
+**Three parallel build pipelines** (server, migrate, frontend), each shipping its own immutable image and with its own deploy fan-out:
 
 ```
 On push to main:
-  ┌─────────────────────────┐    ┌─────────────────────────┐
-  │  build-server (GH-A)    │    │  build-frontend (GH-A)  │
-  │  1. setup Java 21       │    │  1. setup Node          │
-  │  2. ./gradlew test      │    │  2. npm ci && npm test  │
-  │  3. docker build        │    │  3. npm run build       │
-  │  4. push → GHCR (SHA)   │    │  4. push static bundle  │
-  │                          │    │     to GHCR (nginx     │
-  │                          │    │     image) or asset    │
-  │                          │    │     store              │
-  └────────────┬─────────────┘    └────────────┬────────────┘
-               │                                │
-         ┌─────┴──────┐                  ┌──────┴──────┐
-         ▼            ▼                  ▼             ▼
-   ┌──────────┐  ┌──────────┐      ┌──────────┐  ┌──────────┐
-   │ deploy-  │  │ deploy-  │      │ deploy-  │  │ deploy-  │
-   │ unraid-  │  │ prod-    │      │ unraid-  │  │ prod-    │
-   │ server   │  │ server   │      │ frontend │  │ frontend │
-   └──────────┘  └──────────┘      └──────────┘  └──────────┘
+  ┌────────────────────┐   ┌────────────────────┐   ┌────────────────────┐
+  │  build-server      │   │  build-migrate     │   │  build-frontend    │
+  │  Java 21 + Gradle  │   │  liquibase + ext'n │   │  Node + Vite       │
+  │  ./gradlew test    │   │  docker build      │   │  npm ci + build    │
+  │  bootJar           │   │  push → GHCR       │   │  static bundle →   │
+  │  docker build      │   │   tc-overwatch-    │   │  GHCR (nginx       │
+  │  push → GHCR       │   │   migrate          │   │  image)            │
+  │   tc-overwatch-    │   │                    │   │                    │
+  │   server           │   │                    │   │                    │
+  └─────────┬──────────┘   └─────────┬──────────┘   └─────────┬──────────┘
+            │                        │                        │
+      ┌─────┴──────┐                 │                  ┌─────┴──────┐
+      ▼            ▼                 ▼                  ▼            ▼
+┌──────────┐  ┌──────────┐    (consumed by         ┌──────────┐  ┌──────────┐
+│ deploy-  │  │ deploy-  │     deploy-unraid-      │ deploy-  │  │ deploy-  │
+│ unraid-  │  │ prod-    │     server's migrate    │ unraid-  │  │ prod-    │
+│ server   │  │ server   │     step + the local-   │ frontend │  │ frontend │
+└──────────┘  └──────────┘     dev compose)        └──────────┘  └──────────┘
 ```
 
-Frontend and backend deploys are independent. Either can ship without the other. The contract between them is the JSON shape of the HTTP API — kept aligned by review today, and slated to be enforced by OpenAPI codegen + CI drift check per issue #83.
+Server, migrate, and frontend deploys are independent. Any one can ship without the others. The frontend↔backend contract is the JSON shape of the HTTP API, kept aligned by OpenAPI codegen + CI drift check (per issue #83); migrate↔backend coupling is the schema, kept aligned by review (an entity field change ships with a migration changeset in the same PR).
 
 ### Unraid deploy: self-hosted runner
 
