@@ -1,12 +1,19 @@
 # Unraid pilot stack. Bring up via:
 #
-#   docker compose -f docker-compose.unraid.yml up -d
+#   docker compose -f docker-compose.unraid.yml \
+#     --env-file /mnt/user/tco/.env up -d
 #
-# Secrets come from /mnt/user/tco/.env (mode 0600, outside the repo).
-# See .env.unraid.example for the required keys.
+# Two independent uses of the same .env file:
+#   - `--env-file` feeds compose's ${VAR} interpolation in THIS file.
+#   - `env_file:` directives below pass variables through to each container.
+# Forgetting `--env-file` fails fast with a clear "missing X" error (via the
+# ${VAR:?...} fallbacks below), rather than silently substituting empty
+# strings. The .env file lives at /mnt/user/tco/.env with mode 0600, outside
+# the repo. See .env.unraid.example for the required keys.
 #
-# Backend, migrate, frontend, and cloudflared services land in later commits
-# on this branch.
+# Frontend (Nginx + static bundle from GHCR) and cloudflared (Cloudflare
+# Tunnel connector) services land in later commits — blocked on the frontend
+# OCI image (#71) and Cloudflare Tunnel hostname registration (#74 / #75).
 
 services:
   postgres:
@@ -25,6 +32,40 @@ services:
       retries: 20
     networks:
       - tco-net
+
+  migrate:
+    image: ghcr.io/cnau/tc-overwatch-migrate:main
+    container_name: tco-migrate
+    restart: "no"
+    env_file:
+      - /mnt/user/tco/.env
+    environment:
+      LIQUIBASE_COMMAND_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:?missing — pass --env-file /mnt/user/tco/.env}
+      LIQUIBASE_COMMAND_USERNAME: tco_migrate
+      LIQUIBASE_COMMAND_PASSWORD: ${TCO_MIGRATE_PASSWORD:?missing — pass --env-file /mnt/user/tco/.env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - tco-net
+
+  backend:
+    image: ghcr.io/cnau/tc-overwatch-server:main
+    container_name: tco-backend
+    restart: unless-stopped
+    env_file:
+      - /mnt/user/tco/.env
+    environment:
+      SPRING_PROFILES_ACTIVE: unraid
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - tco-net
+    # Healthcheck deferred: the eclipse-temurin:23-jre base lacks curl/wget,
+    # and nothing else in the stack currently depends_on backend's health.
 
 networks:
   tco-net:

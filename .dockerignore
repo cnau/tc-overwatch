@@ -1,0 +1,37 @@
+# Top-level .dockerignore. Applies to every `docker build` in this repo
+# unless a per-Dockerfile <name>.dockerignore overrides.
+#
+# Goal: keep the build context small (the migrate image only needs
+# server/src/main/resources/db/changelog; the server image only needs
+# server/build/libs/server-*-SNAPSHOT.jar — everything else is waste).
+
+# Version control + repo metadata
+.git
+.gitignore
+.gitattributes
+.github
+
+# Editor / IDE
+**/.idea
+**/.vscode
+**/*.iml
+**/.DS_Store
+
+# Local-only env files (production secrets live outside the repo)
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Build outputs — broadly excluded; the bootJar that server/Dockerfile copies
+# is the one re-inclusion needed.
+**/build
+**/dist
+**/node_modules
+**/.gradle
+**/.next
+**/.cache
+**/coverage
+
+!server/build
+!server/build/libs
+!server/build/libs/**

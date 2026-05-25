@@ -1,0 +1,17 @@
+# Unraid pilot profile. Activate via SPRING_PROFILES_ACTIVE=unraid.
+# Pairs with docker-compose.unraid.yml — backend reads its config from the
+# .env file mounted into the container at /mnt/user/tco/.env on the host.
+
+spring:
+  datasource:
+    url: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+    username: tco_app
+    password: ${TCO_APP_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+auth:
+  jwt:
+    secret: ${AUTH_JWT_SECRET}
+
+app:
+  frontend-base-url: ${APP_FRONTEND_BASE_URL}

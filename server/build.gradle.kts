@@ -1,5 +1,6 @@
 // :server — the Spring Boot application. HTTP/JSON API (Spring MVC + Jackson), JPA persistence,
-// Liquibase migrations, Kotlin extension-function boundary mappers, feature-by-package layout.
+// Kotlin extension-function boundary mappers, feature-by-package layout.
+// Liquibase lives in the separate `migrate` Docker image — not on this classpath.
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -52,9 +53,6 @@ dependencies {
 
     // Persistence
     runtimeOnly(libs.postgres.jdbc)
-    implementation(libs.liquibase.core)
-    implementation(libs.liquibase.groovyDsl)
-    implementation(libs.springBoot.liquibase) // SB4 moved Liquibase autoconfig to its own module
 
     // Kotlin
     implementation(libs.kotlin.reflect)

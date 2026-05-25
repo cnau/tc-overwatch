@@ -20,7 +20,13 @@ server/src/main/resources/db/changelog/
 
 Register each new changelog file in the master with an explicit `include file:` entry — no `includeAll`. The master file is just an ordered list of includes, one per changelog file.
 
-Migrations run as the `tco_migrate` role. Production: one-shot `migrate` container completes before backend starts. Local: Spring Boot runs them on startup as a dev shortcut.
+Migrations run as the `tco_migrate` role from the **dedicated `migrate` Docker image** (`migrate/Dockerfile`) — Liquibase is intentionally not on the Spring Boot server's classpath. Same one-shot container pattern in every environment:
+
+```
+docker compose -f docker-compose.local.yml run --rm migrate
+```
+
+The image bakes the changelogs in at build time, so the deployed changelog version is locked to the image SHA. See `docs/architecture.md` § CI/CD for the deploy ordering (postgres healthy → migrate completes → backend starts).
 
 ## Changeset naming
 
