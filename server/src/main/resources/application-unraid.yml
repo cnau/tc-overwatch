@@ -15,3 +15,7 @@ auth:
 
 app:
   frontend-base-url: ${APP_FRONTEND_BASE_URL}
+
+cors:
+  allowed-origins:
+    - ${APP_FRONTEND_BASE_URL}
