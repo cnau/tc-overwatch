@@ -26,6 +26,7 @@ LABEL org.opencontainers.image.source="https://github.com/cnau/tc-overwatch"
 LABEL org.opencontainers.image.description="tc-overwatch frontend (Nginx + static bundle)"
 
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --chmod=0755 frontend/docker-entrypoint.d/ /docker-entrypoint.d/
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 EXPOSE 80
