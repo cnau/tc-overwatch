@@ -26,8 +26,8 @@ kotlin {
     }
 }
 
-// Spring Boot Cloud Native Buildpacks — produces an OCI image without writing a Dockerfile.
-// Used by CI in the build-server pipeline; runs locally via `./gradlew :server:bootBuildImage`.
+// Embed build metadata in the JAR so /actuator/info can report version + commit.
+// The runtime image (server/Dockerfile) copies the bootJar produced here.
 springBoot {
     buildInfo()
 }

@@ -23,7 +23,8 @@
 ./gradlew :server:bootRun --args='--spring.profiles.active=local'
 ./gradlew :server:ktlintCheck :server:detekt
 ./gradlew :server:ktlintFormat                       # auto-fix style
-./gradlew :server:bootBuildImage                     # build OCI image
+./gradlew :server:bootJar                            # build executable JAR
+docker build -t tc-overwatch-server:dev -f server/Dockerfile .  # build runtime image
 ```
 
 Local dev assumes Postgres is up via `docker compose -f docker-compose.local.yml up -d postgres`.

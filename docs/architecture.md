@@ -306,7 +306,7 @@ On push to main:
   │  build-server (GH-A)    │    │  build-frontend (GH-A)  │
   │  1. setup Java 21       │    │  1. setup Node          │
   │  2. ./gradlew test      │    │  2. npm ci && npm test  │
-  │  3. bootBuildImage      │    │  3. npm run build       │
+  │  3. docker build        │    │  3. npm run build       │
   │  4. push → GHCR (SHA)   │    │  4. push static bundle  │
   │                          │    │     to GHCR (nginx     │
   │                          │    │     image) or asset    │
