@@ -1,3 +1,5 @@
+import { appConfig } from '@/config'
+
 export class ApiError extends Error {
   readonly code: string
   readonly status: number
@@ -37,7 +39,7 @@ export async function requestJson<T>(input: RequestInfo | URL, init: RequestInit
   if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`)
   }
-  const res = await fetch(input, {
+  const res = await fetch(withBaseUrl(input), {
     ...init,
     headers,
   })
@@ -48,6 +50,16 @@ export async function requestJson<T>(input: RequestInfo | URL, init: RequestInit
 
   if (res.status === 204) return undefined as T
   return (await res.json()) as T
+}
+
+// Prepend the runtime apiBaseUrl to leading-slash string URLs. Absolute URLs,
+// Request objects, and URL instances pass through unchanged. Empty apiBaseUrl
+// (dev) leaves the relative path alone for the Vite proxy to forward.
+function withBaseUrl(input: RequestInfo | URL): RequestInfo | URL {
+  if (typeof input !== 'string') return input
+  if (!input.startsWith('/')) return input
+  if (!appConfig.apiBaseUrl) return input
+  return `${appConfig.apiBaseUrl}${input}`
 }
 
 async function parseError(res: Response): Promise<ApiError> {

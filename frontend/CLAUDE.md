@@ -26,6 +26,18 @@ Run from the repo root with `npm --prefix frontend run <script>` when chaining w
 
 The deployable artifact is `ghcr.io/cnau/tc-overwatch-frontend` — a small Nginx image serving the Vite bundle. Built and pushed by CI (`build-and-push-frontend`) on every push to `main`; `frontend/Dockerfile` is multi-stage (`node:22-alpine` builder → `nginx:1.27-alpine` runtime). `frontend/nginx.conf` configures: SPA fallback to `index.html`, immutable 1-year cache on Vite's content-hashed assets, no-cache on the entry document, and explicit 404s on `/api/*` + `/oauth2/*` (the backend lives on a separate hostname; if a real backend request reaches this Nginx, something's misconfigured and we'd rather fail cleanly than fall through to the SPA shell).
 
+### Runtime config (`/config.js`)
+
+The same image deploys to every environment; environment-specific values (today: the backend's absolute URL) come from a `/config.js` written at container startup.
+
+- **`frontend/public/config.js`** (committed) ships a default with empty `apiBaseUrl`. Vite serves it verbatim in dev → the SPA uses relative URLs that go through the Vite proxy.
+- **`frontend/docker-entrypoint.d/40-generate-config-js.sh`** runs at container start (nginx's standard `/docker-entrypoint.d/` mechanism). It overwrites `/usr/share/nginx/html/config.js` from `$APP_API_BASE_URL`, with backslash + double-quote escaping so any value rides safely inside a JS string literal.
+- **`index.html`** loads `/config.js` as a classic (synchronous) script. The React bundle is a module script (deferred), so `window.__APP_CONFIG__` is always populated before bundle code runs — regardless of where Vite places either tag in the built HTML.
+- **`frontend/src/config.ts`** exports a typed `appConfig` (just `apiBaseUrl` for now). Strip-trailing-slash normalization lives here.
+- **`frontend/src/api/http.ts`** prepends `appConfig.apiBaseUrl` to leading-slash string URLs inside `requestJson`. Empty `apiBaseUrl` (dev) is a no-op. Absolute URLs, `Request` objects, and `URL` instances pass through untouched.
+
+To add a new runtime knob (say, a feature flag): extend `AppConfig` in `src/config.ts`, extend the heredoc in `40-generate-config-js.sh`, and document the new env var.
+
 ## Module-specific notes
 
 - **Vite proxy** in `vite.config.ts` forwards `/api/*`, `/oauth2/*`, and `/login/oauth2/*` to backend `localhost:8080`. Same-origin in the browser during dev — no CORS needed locally. Production is cross-origin under a shared parent domain; bearer tokens (not cookies) ride on every request, so no cross-origin cookie machinery is needed.

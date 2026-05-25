@@ -123,6 +123,12 @@ Where the frontend lives per environment:
 - **Unraid pilot**: separate `nginx`-based container hosting the static build, on its own Cloudflare Tunnel hostname (e.g. `app.example.com` for the frontend, `api.example.com` for the backend). Each tunnel hostname is independent; either can be deployed without touching the other.
 - **GCP production**: frontend built and pushed to **Cloud Storage + Cloud CDN** (or a small Cloud Run static container — pick later). Backend on GKE. Two distinct deploy pipelines.
 
+#### Runtime configuration — one image, env-driven `/config.js`
+
+The same `tc-overwatch-frontend` image deploys to every environment. Environment-specific values (today just the backend's absolute URL) ride in via env vars and are written to `/usr/share/nginx/html/config.js` at container start (`frontend/docker-entrypoint.d/40-generate-config-js.sh`). `index.html` loads `/config.js` as a classic synchronous script before the deferred React bundle; `window.__APP_CONFIG__` is always populated before bundle code reads it. `frontend/src/api/http.ts` prepends `apiBaseUrl` to leading-slash request paths.
+
+Build-time `VITE_*` env vars were rejected because they'd bake the backend URL into the bundle — different image per environment, defeating the "one artifact, multiple deploys" model the server + migrate images already follow. A small startup script and a synchronous tag in `index.html` is the cost; one immutable image per `:main` SHA is the payoff.
+
 ### CORS for cross-origin SPA
 
 Because frontend and backend live on different origins, CORS is a day-one config — but it's simpler in the bearer paradigm than it would be with session cookies (no `Allow-Credentials`, no parent-domain alignment, no SameSite considerations):
