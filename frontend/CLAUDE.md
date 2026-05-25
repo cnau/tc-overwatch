@@ -17,9 +17,14 @@ npm run dev                # Vite dev server on :5173
 npm run build              # type-check + production bundle into dist/
 npm run lint               # ESLint
 npm run preview            # preview the production build locally
+docker build -t tc-overwatch-frontend:dev -f frontend/Dockerfile .   # runtime image (Nginx + bundle)
 ```
 
 Run from the repo root with `npm --prefix frontend run <script>` when chaining with backend commands.
+
+## Production runtime
+
+The deployable artifact is `ghcr.io/cnau/tc-overwatch-frontend` — a small Nginx image serving the Vite bundle. Built and pushed by CI (`build-and-push-frontend`) on every push to `main`; `frontend/Dockerfile` is multi-stage (`node:22-alpine` builder → `nginx:1.27-alpine` runtime). `frontend/nginx.conf` configures: SPA fallback to `index.html`, immutable 1-year cache on Vite's content-hashed assets, no-cache on the entry document, and explicit 404s on `/api/*` + `/oauth2/*` (the backend lives on a separate hostname; if a real backend request reaches this Nginx, something's misconfigured and we'd rather fail cleanly than fall through to the SPA shell).
 
 ## Module-specific notes
 
