@@ -2,7 +2,7 @@
 #
 #   docker compose -f docker-compose.unraid.yml up -d
 #
-# Secrets come from /mnt/user/appdata/tco/.env (mode 0600, outside the repo).
+# Secrets come from /mnt/user/tco/.env (mode 0600, outside the repo).
 # See .env.unraid.example for the required keys.
 #
 # Backend, migrate, frontend, and cloudflared services land in later commits
@@ -14,9 +14,9 @@ services:
     container_name: tco-postgres
     restart: unless-stopped
     env_file:
-      - /mnt/user/appdata/tco/.env
+      - /mnt/user/tco/.env
     volumes:
-      - /mnt/user/appdata/tco/postgres:/var/lib/postgresql
+      - /mnt/user/tco/postgres:/var/lib/postgresql
       - ./scripts/db-init-unraid:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]

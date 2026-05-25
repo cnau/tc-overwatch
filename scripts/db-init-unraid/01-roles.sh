@@ -4,7 +4,7 @@
 # docker-entrypoint executes anything in /docker-entrypoint-initdb.d/ after
 # POSTGRES_USER / POSTGRES_DB are created).
 #
-# Passwords come from the Unraid host's /mnt/user/appdata/tco/.env via
+# Passwords come from the Unraid host's /mnt/user/tco/.env via
 # docker-compose env_file. No password may contain a single quote — the SQL
 # below interpolates them into single-quoted literals.
 

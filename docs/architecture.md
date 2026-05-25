@@ -242,7 +242,7 @@ The application container image is identical for both paths. What differs is wha
 | Edge | Cloud HTTPS LB + Cloud Armor + managed cert | **Cloudflare Tunnel** (free tier) — provides public HTTPS without exposing the homelab IP, no port forwarding |
 | Public IP | Static GCP global IP | None — Cloudflare Tunnel terminates externally |
 | TLS | Google-managed cert | Cloudflare-managed at the tunnel edge |
-| Secrets | Secret Manager + External Secrets Operator | `.env` file outside the Git repo (e.g. `/mnt/user/appdata/tco/.env`), restricted file permissions; mounted into containers |
+| Secrets | Secret Manager + External Secrets Operator | `.env` file outside the Git repo (e.g. `/mnt/user/tco/.env`), restricted file permissions; mounted into containers |
 | Workload Identity | Yes (no keys mounted) | Static Google service account JSON key, read-only mounted into the backend container |
 | Backups | Cloud SQL automated + PITR | Daily `pg_dump` cron writing to Unraid storage; weekly off-host copy (e.g. to a NAS share or B2/S3 bucket) |
 | Monitoring | Cloud Logging + Cloud Monitoring | Container stdout → Unraid log viewer; optional self-hosted Grafana + Prometheus later |
