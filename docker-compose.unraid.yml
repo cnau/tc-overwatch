@@ -11,9 +11,8 @@
 # strings. The .env file lives at /mnt/user/tco/.env with mode 0600, outside
 # the repo. See .env.unraid.example for the required keys.
 #
-# Frontend (Nginx + static bundle from GHCR) and cloudflared (Cloudflare
-# Tunnel connector) services land in later commits — blocked on the frontend
-# OCI image (#71) and Cloudflare Tunnel hostname registration (#74 / #75).
+# cloudflared (Cloudflare Tunnel connector) is still deferred — blocked on
+# tunnel hostname registration (#74) and the production OAuth client (#75).
 
 services:
   postgres:
@@ -66,6 +65,28 @@ services:
       - tco-net
     # Healthcheck deferred: the eclipse-temurin:23-jre base lacks curl/wget,
     # and nothing else in the stack currently depends_on backend's health.
+
+  frontend:
+    image: ghcr.io/cnau/tc-overwatch-frontend:main
+    container_name: tco-frontend
+    restart: unless-stopped
+    env_file:
+      - /mnt/user/tco/.env
+    environment:
+      # Fail-fast guard: the SPA needs an absolute backend URL baked into
+      # /config.js at container start (see frontend/docker-entrypoint.d/).
+      # Empty value = silently-broken cross-origin in the browser.
+      APP_API_BASE_URL: ${APP_API_BASE_URL:?missing — pass --env-file /mnt/user/tco/.env}
+    healthcheck:
+      # 127.0.0.1, not localhost: nginx listens IPv4-only and the container's
+      # localhost resolves to ::1 first.
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1/ || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+    networks:
+      - tco-net
 
 networks:
   tco-net:
