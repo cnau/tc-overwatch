@@ -53,3 +53,7 @@ The Vite dev server proxies `/api/*` and `/oauth/*` to `localhost:8080` so the b
 ## Status
 
 The current state is a scaffold: layered Spring Boot + Kotlin app with one smoke-test feature (`/api/ping`) exercising the full controller → service → DAO → repository → Postgres path. Real features land in subsequent branches.
+
+## License
+
+[Business Source License 1.1](./LICENSE). Non-production use is permitted today. On the Change Date (2030-05-24) the Licensed Work converts to the Apache License, Version 2.0. For commercial / production-use licensing, see the contact link in [LICENSE](./LICENSE).
