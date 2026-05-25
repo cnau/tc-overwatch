@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Backend" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
+  <configuration default="false" name="Backend" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot" folderName="local">
     <option name="ACTIVE_PROFILES" value="local" />
     <module name="tc-overwatch.server.main" />
     <option name="SPRING_BOOT_MAIN_CLASS" value="com.tcoverwatch.Application" />
