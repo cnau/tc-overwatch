@@ -1,5 +1,7 @@
 # tc-overwatch
 
+[![CI](https://github.com/cnau/tc-overwatch/actions/workflows/ci.yml/badge.svg)](https://github.com/cnau/tc-overwatch/actions/workflows/ci.yml)
+
 Transaction Overwatch for Transaction Coordinators.
 
 Automates the repetitive, time-consuming tasks that fill a real-estate transaction coordinator's day. Current focus: Gmail triage + sort + prioritize. See `GOALS.md` for full scope.
@@ -26,15 +28,17 @@ Automates the repetitive, time-consuming tasks that fill a real-estate transacti
 │       ├── application*.yml
 │       └── db/changelog/           # Liquibase Groovy DSL migrations
 ├── frontend/                       # React + TypeScript + Vite (deploys separately)
-├── deploy/helm/tc-overwatch-server/  # Helm chart for GKE
+├── deploy/helm/tc-overwatch-server/  # Helm chart for GKE (future prod target)
 ├── scripts/db-init/                # Local Postgres init (roles + extensions)
+├── scripts/db-init-unraid/         # Unraid Postgres init (env-driven passwords)
 ├── docker-compose.local.yml        # Local Postgres for development
-└── .github/workflows/ci.yml        # Parallel build pipelines (server + frontend)
+├── docker-compose.unraid.yml       # Unraid pilot deploy stack
+└── .github/workflows/ci.yml        # Build pipelines + GHCR image publish
 ```
 
 ## Local development
 
-Requires **JDK 21+** (Spring Boot 4 minimum; the current scaffold pins to JDK 23 because it was the locally-installed version on the dev machine — see `docs/architecture.md` § Scaffold notes for the foojay auto-download caveat), **Node 22+**, and **Docker**.
+Requires **JDK 21+** (Spring Boot 4 minimum; the Gradle toolchain pins to JDK 23, auto-provisioned via Foojay if not already installed), **Node 22+**, and **Docker**.
 
 ```bash
 # 1. Start local Postgres + role setup
@@ -48,8 +52,12 @@ cd frontend && npm install && npm run dev
 # → http://localhost:5173
 ```
 
-The Vite dev server proxies `/api/*` and `/oauth/*` to `localhost:8080` so the browser sees same-origin during development — no CORS needed locally.
+The Vite dev server proxies `/api/*`, `/oauth2/*`, and `/login/oauth2/*` to `localhost:8080` so the browser sees same-origin during development — no CORS needed locally.
 
 ## Status
 
-The current state is a scaffold: layered Spring Boot + Kotlin app with one smoke-test feature (`/api/ping`) exercising the full controller → service → DAO → repository → Postgres path. Real features land in subsequent branches.
+Pre-pilot. The auth + multi-tenancy foundation is live: Google OAuth sign-in via Spring Security `oauth2Login()`, invitation-only signup gate, bearer JWT paradigm, RLS-enforced multi-tenancy backed by a three-role Postgres setup. CI builds the backend image and pushes it to GHCR (`ghcr.io/cnau/tc-overwatch-server`) on every main commit. Deployment to the Unraid pilot stack is in progress — Postgres landed; backend, migrate, frontend, and Cloudflare Tunnel services come next. Real product features (email triage, transaction lifecycle, dashboard) land on top of this baseline — see `docs/task-inventory.md`.
+
+## License
+
+[Business Source License 1.1](./LICENSE). Non-production use is permitted today. On the Change Date (2030-05-24) the Licensed Work converts to the Apache License, Version 2.0. For commercial / production-use licensing, see the contact link in [LICENSE](./LICENSE).
