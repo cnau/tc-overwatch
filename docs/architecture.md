@@ -64,7 +64,7 @@ Why extension functions, explicitly **not MapStruct**:
 
 Discipline: if a mapping is genuinely tedious (50+ fields, multi-source enrichment), it's signalling that the *types* are wrong, not that you need MapStruct — split the DTO or simplify the mapping target.
 
-The naming convention is pinned in `docs/claude/spring-boot.md` § Naming + § Mappers.
+The naming convention is pinned in the `backend-feature` skill § Naming + § Mappers.
 
 ### HTTP API surface
 
@@ -91,8 +91,8 @@ Single Postgres, every tenant-scoped table carries `tenant_id` (UUID, NOT NULL).
 
 ### Locked-in defaults
 
-- **Testing**: JUnit 5 + MockK + Testcontainers (Postgres + any other infra) + AssertK assertions.
-- **Code style**: ktlint + detekt, both enforced in CI.
+- **Testing**: JUnit 5 + MockK + Testcontainers (Postgres + any other infra) + AssertK assertions. Wired in `server/build.gradle.kts`; no tests written yet.
+- **Code style**: ktlint, enforced in CI. detekt is configured but task-disabled pending its 2.0.0 release — see § Scaffold notes.
 - **Logging**: Logback (Spring Boot default) with a structured JSON encoder for the `prod` / `unraid` profiles.
 - **JSON**: Jackson at the API boundary. `@JsonInclude(Include.NON_NULL)` as the default.
 - **Package layout**: by-feature (`feature/<name>/api/`, `feature/<name>/service/`, `feature/<name>/persistence/`). Cross-cutting concerns (`config/`, `common/`, `security/`) at the top level.
@@ -168,7 +168,7 @@ Plain HTTP + JSON via Spring MVC `@RestController`s and Jackson. The browser SPA
 **React + TypeScript + Vite**.
 
 - **State + data fetching**: **TanStack Query v5+** with hand-written typed `fetch` wrappers under `src/api/<domain>.ts`. One file per domain exports the request/response types, the fetch function, and the `useQuery` / `useMutation` hooks that wrap it.
-- **UI primitives**: **Mantine v8+** — hooks-first, TypeScript-first component library. Ships finished primitives (modals, drawers, dialogs, date pickers, notifications, dropzone, etc.). Theme + CSS variables; no required CSS-in-JS (Mantine 7 dropped emotion, Mantine 8 continued the pure-CSS direction). Mantine's own form package (`@mantine/form`) is intentionally **not** used — see Forms below.
+- **UI primitives**: **Mantine v9** (installed: `^9.2.1`) — hooks-first, TypeScript-first component library. Ships finished primitives (modals, drawers, dialogs, date pickers, notifications, dropzone, etc.). Theme + CSS variables; no required CSS-in-JS (Mantine 7 dropped emotion, Mantine 8 continued the pure-CSS direction). Mantine's own form package (`@mantine/form`) is intentionally **not** used — see Forms below.
 - **Routing**: React Router v6.4+ with the Data Router (`createBrowserRouter`, route loaders, `errorElement`).
 - **Forms**: **react-hook-form + Zod** (via `@hookform/resolvers/zod`). Mantine inputs wired via react-hook-form's `Controller`; thin per-input wrappers (`RhfTextInput`, `RhfSelect`) hide the Controller boilerplate once N>1 forms exist. Backend service-DTO shape is the source of truth; Zod schemas on the frontend mirror it for client-side validation.
 - The frontend never talks to Gmail or any external service directly; all data flows through the backend HTTP API.
@@ -419,10 +419,10 @@ Developer runs `gradle bootRun` and `vite dev` from their laptop against a local
   CREATE POLICY tenant_isolation ON [table_name]
     USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
   ```
-  In practice migrations call `SELECT tco.enable_tenant_isolation('[table_name]')` — see `docs/claude/liquibase.md` § Tenant-scoped table template. `NULLIF` is required: `current_setting(.., true)` returns `''` (not NULL) when the setting is unset, and `''::uuid` throws.
+  In practice migrations call `SELECT tco.enable_tenant_isolation('[table_name]')` — see the `db-migrations` skill § Tenant-scoped table template. `NULLIF` is required: `current_setting(.., true)` returns `''` (not NULL) when the setting is unset, and `''::uuid` throws.
 - The Spring Boot request pipeline sets `app.tenant_id` on the Postgres session at the start of each transaction, derived from the authenticated user. `TenantBindingAspect` (a Spring AOP `@Around` advice on `@Transactional` methods) reads the principal's `tenantId` from `SecurityContextHolder` and calls `set_config('app.tenant_id', <uuid>, true)` — the `true` makes it transaction-LOCAL, released at commit/rollback. The aspect is ordered to fire INSIDE the transaction (advisor `order = 0`, aspect `@Order(1)`) so the binding sits between BEGIN and any query.
 - Migrations declare RLS policies alongside the tables they protect (Liquibase (Groovy DSL) migrations include both `CREATE TABLE` and `CREATE POLICY` in the same file).
-- Tests use Testcontainers Postgres with the same RLS policies enabled; a test must explicitly set the tenant context to read/write rows, which catches cross-tenant bugs at unit-test time.
+- Tests are intended to use Testcontainers Postgres with the same RLS policies enabled, requiring each test to set the tenant context explicitly before reading or writing — that's what catches cross-tenant bugs at unit-test time. No tests exist yet; the first one sets this precedent.
 
 ### Three Postgres roles, separated by privilege
 

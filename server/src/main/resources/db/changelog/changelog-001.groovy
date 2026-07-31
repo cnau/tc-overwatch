@@ -1,7 +1,7 @@
 package db.changelog
 
 // changelog-001 — accumulates v0 schema changesets. Append new changesets below;
-// see docs/claude/liquibase.md for naming + rotation rules.
+// see the `db-migrations` skill for naming + rotation rules.
 
 databaseChangeLog {
 

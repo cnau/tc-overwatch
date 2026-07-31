@@ -56,7 +56,9 @@ The Vite dev server proxies `/api/*`, `/oauth2/*`, and `/login/oauth2/*` to `loc
 
 ## Status
 
-Pre-pilot. The auth + multi-tenancy foundation is live: Google OAuth sign-in via Spring Security `oauth2Login()`, invitation-only signup gate, bearer JWT paradigm, RLS-enforced multi-tenancy backed by a three-role Postgres setup. CI builds the backend image and pushes it to GHCR (`ghcr.io/cnau/tc-overwatch-server`) on every main commit. Deployment to the Unraid pilot stack is in progress — Postgres landed; backend, migrate, frontend, and Cloudflare Tunnel services come next. Real product features (email triage, transaction lifecycle, dashboard) land on top of this baseline — see `docs/task-inventory.md`.
+Pilot is live. The auth + multi-tenancy foundation ships: Google OAuth sign-in via Spring Security `oauth2Login()`, invitation-only signup gate, bearer JWT paradigm, RLS-enforced multi-tenancy backed by a three-role Postgres setup. CI builds and pushes all three images to GHCR (`tc-overwatch-server`, `-frontend`, `-migrate`) on every main commit, and the full Unraid stack — Postgres, migrate, backend, frontend, Cloudflare Tunnel — runs behind `tc-overwatch.net`; first end-to-end sign-in completed at the `pilot-live` tag.
+
+Deploys are still manual (`docker compose pull && up -d` on the host); CI/CD automation is epic #67. Real product features — email triage, transaction lifecycle, dashboard — have not started yet and land on top of this baseline. See `docs/task-inventory.md` and epic #17.
 
 ## License
 

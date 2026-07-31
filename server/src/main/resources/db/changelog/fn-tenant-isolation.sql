@@ -2,7 +2,7 @@
 
 -- Helper functions for the project-standard tenant_isolation RLS policy. Called from
 -- every tenant-scoped table's create / drop changesets so the policy text lives in
--- exactly one place. Per docs/claude/liquibase.md: SQL-heavy changesets (functions,
+-- exactly one place. Per the `db-migrations` skill: SQL-heavy changesets (functions,
 -- procedures, views, triggers) use Liquibase formatted SQL — Groovy DSL is for table
 -- manipulations and basic updates.
 
