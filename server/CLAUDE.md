@@ -17,10 +17,13 @@ migration → use the `db-migrations` skill.
   client ID only.
 - **`feature/ping` is a scaffold smoke test, not a pattern to extend.** The first real feature
   replaces it and becomes the reference shape.
-- **detekt is task-disabled** in `build.gradle.kts` — detekt 1.23 embeds Kotlin 2.0 and fails
-  under 2.2. CI's `detekt` invocation is a silent no-op; ktlint is the only active check until
-  detekt 2.0.0 ships. Don't trust detekt to catch anything, and don't "fix" the disable block
-  without upgrading first.
+- **ktlint owns formatting, detekt owns structure.** Where they overlap the detekt rule is
+  disabled in `detekt.yml`, so line length has exactly one owner. Every override in that file
+  states its reason — add yours, or fix the code. Don't add a detekt baseline file; 0 findings
+  is the current state and a baseline would hide the next one.
+- **detekt runs pinned to Kotlin 2.0.21 and `jvmTarget = "21"`** (`build.gradle.kts`) because
+  1.23.8 can't run under this project's Kotlin 2.2 or JDK 23. Both workarounds come out
+  together when detekt 2.0.0 ships — see #112.
 - **There are no tests yet** (`server/src/test` is empty). The dependencies and conventions are
   in place; the first test author sets the precedent, so follow the `backend-feature` skill's
   testing section rather than improvising.

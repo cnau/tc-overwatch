@@ -213,5 +213,15 @@ precedent for everything after. The conventions below are decided, just unexerci
   cross-tenant bug catcher — a test that skips it is testing nothing about isolation.
 - AssertK chains over JUnit `assertEquals`.
 
-Also note **detekt is task-disabled** in `server/build.gradle.kts` (detekt 1.23 embeds Kotlin
-2.0, incompatible with 2.2). CI's `detekt` call is a no-op; only ktlint actually runs.
+## Static analysis
+
+Both gates are real and both fail the build: ktlint owns formatting, detekt owns structure. On
+overlap the detekt rule is switched off in `detekt.yml` so there's one owner per concern.
+
+detekt currently reports 0 findings. When it flags your code, the default is to fix the code —
+reach for a config override only when the finding is a framework contract rather than a smell
+(the existing entries cover `@Entity` constructor width, `@RestControllerAdvice` handler count,
+and `@ExceptionHandler` parameters Spring resolves by type). Every override in `detekt.yml`
+carries its reason; match that. Suppress at a call site only when the rule should keep firing
+everywhere else — `Application.kt`'s `@Suppress("SpreadOperator")` is the one such case.
+**Never add a detekt baseline file**; it would bank the current zero and hide the next finding.

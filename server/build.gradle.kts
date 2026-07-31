@@ -88,9 +88,20 @@ detekt {
     config.setFrom(rootProject.files("detekt.yml"))
 }
 
-// detekt 1.23.x embeds Kotlin 2.0.x; running under Kotlin 2.2 fails with
-// "compiled with Kotlin 2.0.21 but currently running with 2.2.0". detekt 2.0.0
-// (which embeds 2.2) is not yet released. Disable detekt tasks until it ships;
-// ktlint covers formatting in the meantime. Re-enable by deleting this block.
-tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach { enabled = false }
-tasks.withType<io.gitlab.arturbosch.detekt.DetektCreateBaselineTask>().configureEach { enabled = false }
+// detekt 1.23.8 is compiled against Kotlin 2.0.21 and refuses to run under 2.2.0. Pinning
+// only detekt's own configuration keeps the project on 2.2 — this classpath is separate
+// from compileKotlin's. Drop this block when detekt 2.0.0 ships (it embeds 2.2).
+configurations.matching { it.name == "detekt" }.all {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "org.jetbrains.kotlin") {
+            useVersion(libs.versions.detektEmbeddedKotlin.get())
+        }
+    }
+}
+
+// detekt's embedded 2.0.21 compiler rejects --jvm-target 23, which the toolchain above sets.
+// 21 is Spring Boot 4's floor and what CI provisions; detekt only parses, so this never
+// reaches bytecode.
+tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+    jvmTarget = "21"
+}
