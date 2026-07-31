@@ -48,3 +48,18 @@ services:
       # same absolute path the host sees. Mount it anywhere else and compose
       # silently bind-mounts an empty directory it created.
       - /mnt/user/tco/runner/_work:/mnt/user/tco/runner/_work
+      # The app stack's .env, read-only. Easy to assume this is unnecessary
+      # because the *containers* it configures run on the host — but `--env-file`
+      # and the `env_file:` service directives are resolved by the compose
+      # *client*, which is this container. Without it every compose command in a
+      # deploy job dies with `couldn't find env file: /mnt/user/tco/.env`, before
+      # it ever reaches the daemon. scripts/smoke.sh reads the same file for the
+      # two public base URLs.
+      #
+      # This does put the pilot's secrets inside the runner's filesystem, which
+      # is the arrangement docs/architecture.md § Unraid deploy already assumes
+      # ("the runner has local access to the .env file on Unraid"). It grants a
+      # job nothing it couldn't already take: the Docker socket above is
+      # root-equivalent on the host. The boundary that matters stays the
+      # push-on-main guard in ci.yml, not this mount.
+      - /mnt/user/tco/.env:/mnt/user/tco/.env:ro
