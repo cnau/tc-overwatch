@@ -1,0 +1,50 @@
+# Self-hosted GitHub Actions runner for the Unraid pilot. Bring up via:
+#
+#   docker compose -f docker-compose.runner.yml \
+#     --env-file /mnt/user/tco/.env.runner up -d
+#
+# Full setup, including the PAT scopes and the security constraints that make
+# a self-hosted runner on a *public* repo safe, is in docs/unraid-runner.md.
+# Read that before running this.
+#
+# Deliberately its own compose project (`name:` below), not a service inside
+# docker-compose.unraid.yml: a deploy job runs `docker compose up -d backend`
+# against the app project, and a runner living in that project would be a
+# recreate candidate — the job would kill the container executing it.
+#
+# The runner makes only outbound calls to GitHub to claim jobs. No inbound
+# port, no firewall hole — the same posture as the Cloudflare Tunnel.
+
+name: tco-runner
+
+services:
+  runner:
+    # To bump: docker pull myoung34/github-runner:<new-tag>; copy the printed digest here.
+    image: myoung34/github-runner:2.336.0-ubuntu-noble@sha256:c803ddbc5b91961aabf3411c6336cb2c838cdaa2f917f76654c15a1948934817
+    container_name: tco-runner
+    restart: unless-stopped
+    env_file:
+      - /mnt/user/tco/.env.runner
+    environment:
+      REPO_URL: https://github.com/cnau/tc-overwatch
+      RUNNER_NAME: unraid
+      RUNNER_SCOPE: repo
+      # `self-hosted` is applied by GitHub automatically; this adds the second
+      # half of the `runs-on: [self-hosted, unraid]` selector.
+      LABELS: unraid
+      RUNNER_WORKDIR: /mnt/user/tco/runner/_work
+      # The image pins its own runner version and we pin its digest; letting it
+      # self-update would silently drift off the pinned artifact.
+      DISABLE_AUTO_UPDATE: "true"
+    volumes:
+      # Jobs drive the host's Docker daemon rather than nesting one. The runner
+      # is therefore as privileged as the host Docker socket — see the security
+      # section of docs/unraid-runner.md.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Identical path on both sides, and it must be. Bind mounts declared in a
+      # compose file are resolved by the *host* daemon, not by the container
+      # issuing the command, so docker-compose.unraid.yml's relative
+      # ./scripts/db-init-unraid mount only resolves if the checkout sits at the
+      # same absolute path the host sees. Mount it anywhere else and compose
+      # silently bind-mounts an empty directory it created.
+      - /mnt/user/tco/runner/_work:/mnt/user/tco/runner/_work

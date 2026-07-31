@@ -12,6 +12,7 @@ Automates the repetitive, time-consuming tasks that fill a real-estate transacti
 - **`docs/task-inventory.md`** — full task map with status flags (`[FOCUS]` / `[REVIEW]` / `[BACKLOG]` / etc.).
 - **`docs/glossary.md`** — project-specific vocabulary.
 - **`docs/architecture.md`** — implementation stack, security zones, deployment paths, CI/CD.
+- **`docs/unraid-runner.md`** — runbook for the self-hosted runner that deploys the pilot.
 
 ## Repo layout
 
@@ -31,9 +32,12 @@ Automates the repetitive, time-consuming tasks that fill a real-estate transacti
 ├── deploy/helm/tc-overwatch-server/  # Helm chart for GKE (future prod target)
 ├── scripts/db-init/                # Local Postgres init (roles + extensions)
 ├── scripts/db-init-unraid/         # Unraid Postgres init (env-driven passwords)
+├── scripts/wait-for-healthy.sh     # Deploy gate: block until a container is healthy
+├── scripts/smoke.sh                # Post-deploy checks against the public hostnames
 ├── docker-compose.local.yml        # Local Postgres for development
 ├── docker-compose.unraid.yml       # Unraid pilot deploy stack
-└── .github/workflows/ci.yml        # Build pipelines + GHCR image publish
+├── docker-compose.runner.yml       # Self-hosted GitHub Actions runner (Unraid)
+└── .github/workflows/ci.yml        # Build pipelines + GHCR publish + Unraid deploy
 ```
 
 ## Local development
@@ -58,7 +62,9 @@ The Vite dev server proxies `/api/*`, `/oauth2/*`, and `/login/oauth2/*` to `loc
 
 Pilot is live. The auth + multi-tenancy foundation ships: Google OAuth sign-in via Spring Security `oauth2Login()`, invitation-only signup gate, bearer JWT paradigm, RLS-enforced multi-tenancy backed by a three-role Postgres setup. CI builds and pushes all three images to GHCR (`tc-overwatch-server`, `-frontend`, `-migrate`) on every main commit, and the full Unraid stack — Postgres, migrate, backend, frontend, Cloudflare Tunnel — runs behind `tc-overwatch.net`; first end-to-end sign-in completed at the `pilot-live` tag.
 
-Deploys are still manual (`docker compose pull && up -d` on the host); CI/CD automation is epic #67. Real product features — email triage, transaction lifecycle, dashboard — have not started yet and land on top of this baseline. See `docs/task-inventory.md` and epic #17.
+Deploys are continuous: every commit to `main` builds the three images, then a self-hosted runner on the Unraid box pulls that commit's immutable tag, applies migrations in a one-shot container, restarts the affected service, and smoke-tests it through the public hostname. Backend and frontend deploy independently. See `docs/unraid-runner.md`.
+
+Real product features — email triage, transaction lifecycle, dashboard — have not started yet and land on top of this baseline. See `docs/task-inventory.md` and epic #17.
 
 ## License
 

@@ -17,6 +17,24 @@
 #   app.<domain> → HTTP → frontend:80
 #   api.<domain> → HTTP → backend:8080
 # Routing config lives in the dashboard, not here.
+#
+# Image tags default to `main` — what a hand-run `up -d` on the box gets. The
+# deploy-unraid-* CI jobs override the one service they own with that commit's
+# immutable `sha-<short>` tag, so a deploy ships exactly the reviewed commit
+# and never races the moving `main` tag. Rollback is the same command with an
+# older SHA:
+#
+#   TCO_SERVER_TAG=sha-abc1234 docker compose -f docker-compose.unraid.yml \
+#     --env-file /mnt/user/tco/.env up -d backend
+#
+# Caveat of the defaults: a bare `up -d` (no tag vars) pulls every service back
+# to `main`, discarding a SHA-pinned rollback. Deploy one service at a time.
+
+# Pinned so the project identity doesn't depend on the directory compose runs
+# from. Without this, a CI checkout under the runner's workspace is a different
+# project than a hand-run from /mnt/user/tco/repo, and the second one collides
+# on the container_name values below instead of adopting the running stack.
+name: tco
 
 services:
   postgres:
@@ -37,7 +55,7 @@ services:
       - tco-net
 
   migrate:
-    image: ghcr.io/cnau/tc-overwatch-migrate:main
+    image: ghcr.io/cnau/tc-overwatch-migrate:${TCO_MIGRATE_TAG:-main}
     container_name: tco-migrate
     restart: "no"
     env_file:
@@ -53,7 +71,7 @@ services:
       - tco-net
 
   backend:
-    image: ghcr.io/cnau/tc-overwatch-server:main
+    image: ghcr.io/cnau/tc-overwatch-server:${TCO_SERVER_TAG:-main}
     container_name: tco-backend
     restart: unless-stopped
     env_file:
@@ -86,7 +104,7 @@ services:
       - tco-net
 
   frontend:
-    image: ghcr.io/cnau/tc-overwatch-frontend:main
+    image: ghcr.io/cnau/tc-overwatch-frontend:${TCO_FRONTEND_TAG:-main}
     container_name: tco-frontend
     restart: unless-stopped
     env_file:
