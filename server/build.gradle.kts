@@ -48,7 +48,7 @@ dependencies {
     implementation(libs.aspectjweaver)
 
     // OpenAPI 3 spec + Swagger UI. Auto-walks @RestControllers — no annotations required
-    // on existing code. See docs/claude/spring-boot.md § OpenAPI for the field-doc convention.
+    // on existing code. See the `backend-feature` skill § OpenAPI for the known gaps.
     implementation(libs.springdoc.openapi.webmvc.ui)
 
     // Persistence

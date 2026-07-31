@@ -10,7 +10,7 @@ import org.springframework.core.annotation.Order
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Component
 
-// Mechanism + ordering pairing with MultiTenancyConfig in docs/claude/spring-boot.md § Multi-tenancy / RLS.
+// Mechanism + ordering pairing with MultiTenancyConfig: `backend-feature` skill § Multi-tenancy / RLS.
 @Aspect
 @Component
 @Order(1)

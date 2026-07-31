@@ -19,7 +19,7 @@ replay_pid*.log
 **/generated-src/
 # `frontend/src/gen/` uses a whitelist in frontend/.gitignore: api.d.ts is
 # committed (CI diffs it against a fresh regen), everything else stays
-# untracked. See docs/claude/react.md § API types.
+# untracked. See the `frontend-feature` skill § Generated types.
 
 # ── Node / frontend (frontend/.gitignore also covers these inside the dir) ─
 node_modules/
@@ -29,6 +29,11 @@ node_modules/
 .idea/
 .vscode/
 .fleet/
+
+# ── Claude Code ───────────────────────────────────────────────────────────
+# Per-machine permission grants — not shared. `.claude/skills/` stays tracked:
+# those are project context, same rationale as .run/ above.
+.claude/settings.local.json
 
 # ── OS ────────────────────────────────────────────────────────────────────
 .DS_Store

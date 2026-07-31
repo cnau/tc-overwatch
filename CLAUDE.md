@@ -1,48 +1,70 @@
 # tc-overwatch — PERSONAL project
 
-This repo is **Christian's personal monorepo**, not work. Multiple Claude sessions may be open across personal and work projects at the same time — this file is the signal that you're in the personal context.
+Lead each response with `[personal:tc-overwatch]`.
 
-## Session tag
-
-Lead each response with `[personal:tc-overwatch]` so Christian can tell at a glance which session he's looking at.
+Identity, remotes, `gh` account switching, and the work-vs-personal confirm rule are defined
+once in `~/projects/CLAUDE.md`. Read it before any `gh` or `git push` operation.
 
 ## Where to look
 
-- `GOALS.md` — strategy, v0 boundary, current focus, non-goals.
-- `docs/architecture.md` — stack, layering, security zones, deployment, multi-tenancy/RLS. Decisions here are pinned via explicit trade-off discussions (layered DTOs, Kotlin extension-function mappers, RLS day one, three Postgres roles, HTTP/JSON API, separate frontend deploy, no retroactive Gmail reorganization). Surface the case for changing one — don't silently diverge.
-- `docs/task-inventory.md` — full task map with `[FOCUS]` / `[REVIEW]` / `[BACKLOG]` flags.
-- `docs/glossary.md` — project vocabulary (TC, transaction key, primary vs. cooperating agent, triage labels, hot/cold storage). Use these terms; don't invent alternates.
-- `docs/claude/` — shared coding conventions, imported by module-level `CLAUDE.md` files.
-- Module-level `CLAUDE.md` (`server/`, `frontend/`) — module overview, commands, module-specific tech.
+| Need | File |
+|---|---|
+| Strategy, v0 boundary, non-goals | `GOALS.md` |
+| Pinned architecture decisions + trade-off records | `docs/architecture.md` |
+| Task map with `[FOCUS]` / `[REVIEW]` / `[BACKLOG]` | `docs/task-inventory.md` |
+| Project vocabulary — use these terms, don't invent alternates | `docs/glossary.md` |
+
+Architecture decisions are pinned via explicit trade-off discussions. Surface the case for
+changing one — don't silently diverge.
 
 ## Greenfield
 
-No legacy code — what you ship today becomes the baseline. A shortcut now is a pattern other code will copy.
+No legacy code. What you ship today becomes the baseline other code copies, so a shortcut
+now is a pattern, not an isolated compromise.
 
-## Identity & remotes
+## Non-negotiables
 
-- GitHub account `cnau` (personal), email `christian.nau@gmail.com`.
-- SSH remotes use the `github.com-personal` host alias (e.g. `git@github.com-personal:cnau/...`). Never rewrite to bare `github.com:` — routes through the work key.
-- Commits are SSH-signed with `~/.ssh/id_github_personal`.
+- **A controller never touches a Hibernate entity** — not as a parameter, return type, local,
+  or import. Service public signatures are DTO-only. Binary check: entity in a controller
+  signature or import = block before merge.
+- **Never bypass tenant isolation.** RLS filters by `app.tenant_id`; never hand-write
+  `WHERE tenant_id = ?`, never reach for the admin pool to dodge a policy.
+- **Never modify a Liquibase changeset that has been committed.** `id` + `author` is the
+  checksum key. New change → new changeset.
+- **The version catalog (`gradle/libs.versions.toml`) and Maven Central are the only sources
+  of backend dependencies.** No versions in build files, no `mavenLocal()`.
+- **The repo root owns cross-cutting config.** No per-module `.gitignore`, `.github/`, or
+  Gradle wrapper.
+- **Environments are Spring profiles (`local`, `unraid`, `prod`) + env vars + secrets** — never
+  a per-environment config file. Secrets are never committed.
+- **The backend never bundles the frontend.** They build and deploy as separate images.
 
-## If a prompt sounds work-related
+## Conventions
 
-References to HaulerHero, work tickets, work services, the `christiannau` GitHub account, or `haulerhero.com` email = stop and confirm. Christian may have typed into the wrong session. Quick "this looks work-related but we're in your personal repo — confirm?" is the right move.
+- **Kotlin DSL** for all Gradle build files. **Liquibase Groovy DSL** for migrations
+  (`.sql` only for functions/views/triggers).
+- **Run commands from the repo root**: `./gradlew :server:build`,
+  `npm --prefix frontend run build`.
+- Run the relevant build before committing — `./gradlew build` for backend,
+  `npm --prefix frontend run build` for frontend.
+- The backend's OpenAPI spec is the FE/BE type contract. Frontend types are **generated**
+  into `frontend/src/gen/api.d.ts`, committed, and CI fails on drift. Never hand-write a type
+  that has a backend counterpart.
 
-## Monorepo rules
+## Repo etiquette
 
-### Always
-- **Version catalog** (`gradle/libs.versions.toml`) is the source of truth for all backend dependencies. Reference via `libs.*` from build files.
-- **Kotlin DSL** for all Gradle build files (`*.gradle.kts`). No Groovy build scripts.
-- **Liquibase Groovy DSL** for all migrations (`*.groovy` under `server/src/main/resources/db/changelog/`). See `docs/claude/liquibase.md`.
-- **Run from the root**: `./gradlew build`, `./gradlew :server:test`, `npm --prefix frontend run build` — paths anchored at the repo root.
-- **HTTP/JSON API**: backend exposes Spring MVC `@RestController`s. Frontend types in `frontend/src/api/<domain>.ts` mirror the backend DTO shapes by review, not codegen — keep them aligned when touching either side.
-- Run the relevant build before committing — `./gradlew build` for backend changes, `npm --prefix frontend run build` for frontend changes.
+- Branch from `main` as `feat/<slug>` or `chore/<slug>`. Issue numbers go in the PR body, not
+  the branch name.
+- Commit subjects are sentence case, no `feat:` prefix, optionally scoped
+  (`Unraid: trust X-Forwarded-Proto…`). The body explains the failure mode and why this fix —
+  see `git log` for the standard.
+- Work is tracked in GitHub Issues + Projects. For issue and PR prose, use the
+  `writing-issues-and-prs` skill.
 
-### Never
-- Hardcode versions in build files — they go in the catalog.
-- Add `mavenLocal()` to any build file.
-- Add a per-module `.gitignore`, `.github/`, or Gradle wrapper — the root covers these.
-- Introduce per-environment config files — use Spring profiles (`local`, `unraid`, `prod`) + env vars + secrets, per `docs/architecture.md`.
-- Bundle the frontend into the backend container — they deploy separately.
-- Skip RLS or bypass tenant isolation in application code paths. See `docs/architecture.md` § Multi-tenancy and `docs/claude/spring-boot.md`.
+## When to add a rules file
+
+Module-level `CLAUDE.md` carries only what causes a **wrong action** if missed. Guidance that
+merely improves output belongs in a skill under `.claude/skills/<name>/SKILL.md`, loaded on
+demand. Anything under ~10 lines belongs inline in the module `CLAUDE.md` — a skill's
+frontmatter would cost as much as its content. Don't reintroduce a shared always-imported
+conventions doc; that's the pattern this layout replaced.
