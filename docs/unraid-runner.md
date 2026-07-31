@@ -48,9 +48,24 @@ repository, with one permission:
 | Repository → Administration | Read and write |
 
 That is what the GitHub API needs to mint runner registration tokens. It does
-not grant code push, package publish, or access to any other repo. Set an
-expiry and put a calendar reminder on it — an expired PAT shows up as a runner
-that silently stops claiming jobs.
+not grant code push, package publish, or access to any other repo — though
+Administration write can still change repo settings, webhooks, and deploy keys,
+which is why it gets an expiry rather than living on the box forever.
+
+**Use 90 days, and put a calendar reminder on it.** Note where an expired token
+does and doesn't hurt, because the failure is latent: the PAT is read only at
+*registration*, when the container's entrypoint exchanges it for a short-lived
+registration token. After that the runner polls GitHub with its own credentials,
+so steady-state job claiming never touches the PAT. Those credentials live in
+the container filesystem, which is not on a volume — a plain restart or an
+Unraid reboot keeps them, but any **recreate** (image bump, edit to
+`docker-compose.runner.yml`, `down`/`up`) re-registers and needs a live token.
+
+So an expired PAT is invisible for weeks and then surfaces the next time you
+touch the runner for an unrelated reason — as a runner that never comes back
+and jobs that queue. If tracking the expiry becomes a nuisance, swap the PAT
+for a GitHub App (`APP_ID` + `APP_PRIVATE_KEY`, both accepted by this image):
+installation tokens auto-renew, so the cliff disappears entirely.
 
 ### 2. Write the runner env file
 
@@ -168,7 +183,9 @@ skipped. The stack is still under its old project name.
 
 **Jobs sit queued forever** — no runner with both `self-hosted` and `unraid`
 labels is online. Check Repo Settings → Actions → Runners and `docker logs
-tco-runner`; an expired PAT looks exactly like this.
+tco-runner`. If this appeared right after recreating the runner container, and
+the log shows a registration failure rather than `Listening for Jobs`, the PAT
+expired — see step 1.
 
 **Postgres comes up with no roles, or `tco_app` doesn't exist** — the
 `./scripts/db-init-unraid` bind mount resolved to a path the host doesn't have,
