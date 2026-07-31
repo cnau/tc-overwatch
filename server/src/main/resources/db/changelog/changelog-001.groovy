@@ -168,4 +168,20 @@ databaseChangeLog {
             dropTable(tableName: 'invitation')
         }
     }
+
+    // TEMPORARY — reverted immediately after the deploy pipeline observes it.
+    // Verifies the property claimed in docs/architecture.md § Unraid deploy:
+    // a migration failure fails the deploy at the migration step and leaves the
+    // running backend untouched, rather than restarting it against a schema it
+    // can't validate against.
+    //
+    // Deliberately atomic: ALTER TABLE on a missing relation errors before it
+    // changes anything, Postgres DDL is transactional, and Liquibase runs each
+    // changeset in its own transaction — so this applies nothing, records no
+    // row in DATABASECHANGELOG, and leaves no trace once the file is reverted.
+    changeSet(id: 'verify-deploy-migration-failure-path', author: 'Christian Nau') {
+        comment 'TEMPORARY deploy-pipeline verification. Fails on purpose. Revert immediately.'
+
+        sql "ALTER TABLE tco.relation_that_does_not_exist ADD COLUMN never_created TEXT;"
+    }
 }
