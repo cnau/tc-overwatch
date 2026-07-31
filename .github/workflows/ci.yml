@@ -5,10 +5,17 @@ on:
     branches: [main]
   pull_request:
 
-# Two parallel build pipelines per docs/architecture.md § CI/CD.
+# Build + deploy pipelines per docs/architecture.md § CI/CD.
 # build-and-push-* land the runtime images in GHCR on every main-branch
-# commit; deploy jobs (deploy-unraid-*, deploy-prod-*) pull from GHCR and
-# come later with the self-hosted runner setup.
+# commit; deploy-unraid-* pull those images onto the Unraid pilot box via the
+# self-hosted runner (docs/unraid-runner.md). deploy-prod-* come later.
+#
+# SECURITY — this repo is public, and the deploy jobs run on a self-hosted
+# runner sitting on a home network with the host Docker socket mounted. The
+# `if: github.event_name == 'push' && github.ref == 'refs/heads/main'` guard on
+# every self-hosted job is what keeps a forked pull request from executing
+# attacker-authored steps there. Never drop that guard, and never add
+# `runs-on: [self-hosted, unraid]` to a job reachable from `pull_request`.
 
 jobs:
   build-server:
@@ -281,3 +288,120 @@ jobs:
           package-name: tc-overwatch-migrate
           package-type: container
           min-versions-to-keep: 5
+
+  # Unraid pilot deploy — backend half. Needs the migrate image too: the
+  # schema is applied by a one-shot migrate container built from the same
+  # commit, so an entity change and its changeset ship together or not at all.
+  #
+  # Serial by construction: migrate runs to completion, then the backend
+  # restarts. A failed migration fails the job before the new backend image is
+  # ever started, so the old container keeps serving instead of crash-looping
+  # against a half-migrated schema.
+  deploy-unraid-server:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build-and-push-server, build-and-push-migrate]
+    runs-on: [self-hosted, unraid]
+    permissions:
+      contents: read
+      packages: read
+    # Two deploys touching the same compose project at once corrupts the
+    # stack. Queue rather than cancel — a cancelled deploy could leave the
+    # migrate container half-applied.
+    concurrency:
+      group: deploy-unraid-server
+      cancel-in-progress: false
+    env:
+      # Every compose invocation needs the same -f and --env-file; spelling it
+      # once keeps the steps readable and copy-pasteable onto the box.
+      COMPOSE: docker compose -f docker-compose.unraid.yml --env-file /mnt/user/tco/.env
+    steps:
+      - uses: actions/checkout@v4
+
+      # Both services move to this commit's immutable tag. Without this the
+      # deploy would pull whatever `main` points at, which on a busy merge day
+      # is not necessarily the commit that triggered this run.
+      - name: Pin image tags to this commit
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          echo "TCO_SERVER_TAG=sha-${SHORT_SHA}" >> "$GITHUB_ENV"
+          echo "TCO_MIGRATE_TAG=sha-${SHORT_SHA}" >> "$GITHUB_ENV"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull server + migrate images
+        run: $COMPOSE pull backend migrate
+
+      - name: Run DB migrations (one-shot container)
+        run: $COMPOSE run --rm migrate
+
+      # --no-deps because the previous step already satisfied them. Without it
+      # compose re-evaluates backend's `depends_on: migrate
+      # (service_completed_successfully)` and starts the migrate *service*
+      # container to satisfy it — a second, redundant Liquibase run whose
+      # failure would surface as a confusing backend-restart failure rather
+      # than as the migration step.
+      - name: Restart backend
+        run: $COMPOSE up -d --no-deps backend
+
+      - name: Wait for healthcheck
+        run: ./scripts/wait-for-healthy.sh tco-backend 180
+
+      - name: Smoke test
+        run: ./scripts/smoke.sh api
+
+      # The Actions log otherwise ends at "unhealthy" with no stack trace, and
+      # the container may already have been restarted by the time anyone SSHes in.
+      - name: Backend logs on failure
+        if: failure()
+        run: docker logs --tail 200 tco-backend || true
+
+  # Unraid pilot deploy — frontend half. Independent of the backend deploy by
+  # design: no `needs` on it, its own concurrency group, and a smoke test
+  # scoped to the app hostname. Either half can ship while the other is broken.
+  deploy-unraid-frontend:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build-and-push-frontend]
+    runs-on: [self-hosted, unraid]
+    permissions:
+      contents: read
+      packages: read
+    concurrency:
+      group: deploy-unraid-frontend
+      cancel-in-progress: false
+    env:
+      COMPOSE: docker compose -f docker-compose.unraid.yml --env-file /mnt/user/tco/.env
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pin image tag to this commit
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          echo "TCO_FRONTEND_TAG=sha-${SHORT_SHA}" >> "$GITHUB_ENV"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull frontend image
+        run: $COMPOSE pull frontend
+
+      - name: Restart frontend
+        run: $COMPOSE up -d frontend
+
+      - name: Wait for healthcheck
+        run: ./scripts/wait-for-healthy.sh tco-frontend 60
+
+      - name: Smoke test
+        run: ./scripts/smoke.sh app
+
+      - name: Frontend logs on failure
+        if: failure()
+        run: docker logs --tail 200 tco-frontend || true

@@ -334,52 +334,25 @@ Server, migrate, and frontend deploys are independent. Any one can ship without 
 
 For the homelab path, the key trick is using a **GitHub Actions self-hosted runner** that lives on the Unraid box itself. The runner makes outbound calls to GitHub to fetch jobs — no inbound network exposure required. This is the same model as how Cloudflare Tunnel works for the app.
 
-Setup:
+Runner container: `myoung34/github-runner` (digest-pinned) via `docker-compose.runner.yml`, labeled `self-hosted, unraid`, registered to the repo with a fine-grained PAT scoped to this repo's Administration permission alone. It drives the host's Docker daemon through the mounted socket rather than nesting one. Setup procedure, PAT scopes, and operations are in **`docs/unraid-runner.md`**.
 
-- One `actions/runner` container (or `myoung34/github-runner` image) running on Unraid, labeled `self-hosted, unraid`, registered to the repo.
-- Mount the runner's working directory and the compose files onto the runner so it can `docker compose` against the host's Docker socket (or use Docker-in-Docker if isolation matters more).
-- Runner uses a fine-scoped PAT or GitHub App credentials with permission only to receive jobs for the repo.
-
-`deploy-unraid-server` job steps (backend):
-
-```yaml
-runs-on: [self-hosted, unraid]
-steps:
-  - name: Pull new server image
-    run: docker compose -f docker-compose.unraid.yml pull backend
-  - name: Run DB migrations (separate one-shot container)
-    run: docker compose -f docker-compose.unraid.yml run --rm migrate
-  - name: Restart backend
-    run: docker compose -f docker-compose.unraid.yml up -d backend
-  - name: Wait for healthcheck
-    run: ./scripts/wait-for-healthy.sh backend 60s
-  - name: Smoke test (HTTP ping)
-    run: ./scripts/smoke.sh
-```
-
-`deploy-unraid-frontend` job steps:
-
-```yaml
-runs-on: [self-hosted, unraid]
-steps:
-  - name: Pull new frontend image (nginx + static bundle)
-    run: docker compose -f docker-compose.unraid.yml pull frontend
-  - name: Restart frontend
-    run: docker compose -f docker-compose.unraid.yml up -d frontend
-  - name: Wait for healthcheck
-    run: ./scripts/wait-for-healthy.sh frontend 30s
-```
+`deploy-unraid-server` (backend + schema) and `deploy-unraid-frontend` live in `.github/workflows/ci.yml`. Their step sequence — pull → migrate → restart → `scripts/wait-for-healthy.sh` → `scripts/smoke.sh` — is the deploy contract; the workflow file is the authority on exact invocation.
 
 Important properties:
 
 - **Migrations run in a separate container** (`migrate` service in compose, using the `tco_migrate` DB role), not on app startup. Migration failures = clean deploy failure rather than silent crash loop.
 - **Backend starts only after migrations succeed.** Compose `depends_on` + the `migrate` service's `restart: "no"` + serial job steps enforce this.
-- **Frontend deploy never touches the backend, and vice versa.** Two independent pipelines, two independent Cloudflare Tunnel hostnames.
-- **No secrets in the CI workflow** — the runner has local access to the `.env` file on Unraid that docker-compose mounts. CI never sees DB credentials or OAuth secrets.
+- **Frontend deploy never touches the backend, and vice versa.** Two independent pipelines, two independent Cloudflare Tunnel hostnames — the frontend job carries no `needs` on the backend job, and each smoke-tests only its own hostname.
+- **No secrets in the CI workflow** — the runner has local access to the `.env` file on Unraid that docker-compose mounts. CI never sees DB credentials or OAuth secrets. `scripts/smoke.sh` greps that file for the two public base URLs rather than sourcing it, so the rest never enters the job environment.
+- **Deploys pin the commit's immutable `sha-<short>` tag**, injected as `TCO_{SERVER,MIGRATE,FRONTEND}_TAG` overrides on compose's `:main` defaults. A deploy therefore ships the exact commit that triggered it rather than whatever `main` points at by the time the job runs, and rollback is the same command with an older SHA.
+- **The compose project name is pinned (`name: tco`)** so a CI checkout under the runner's workspace and a hand-run from `/mnt/user/tco/repo` are the same project. Without it the second one collides on `container_name` instead of adopting the running stack.
+- **Self-hosted jobs are gated to `push` on `main`.** The repo is public and the runner holds the host Docker socket; that guard is what keeps a forked pull request off the box. It is a security boundary, not a cost optimization.
+
+Smoke tests hit the public Cloudflare hostnames rather than the containers on the docker network, so a green deploy also proves the tunnel and its hostname routing survived — the failure mode a container-local health check cannot see.
 
 ### Image tagging strategy
 
-- Every build tags the image with the **full git SHA** (immutable, traceable).
+- Every build tags the image with the **commit SHA** as `sha-<short>` (immutable, traceable). This is the tag the Unraid deploy jobs pin and the tag a rollback names.
 - `main` is a **moving tag** pointing at the latest successful main build.
 - Release versions (`v0.1.0`, `v1.0.0`) are immutable tags for prod deploys.
 - Unraid pilot tracks `main` (continuous deployment is fine — single user, fast feedback loop).
