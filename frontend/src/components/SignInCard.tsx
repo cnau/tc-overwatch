@@ -1,5 +1,6 @@
 import { Button, Card, Stack, Title } from '@mantine/core'
 
+import UnderConstructionBanner from '@/components/UnderConstructionBanner'
 import { appConfig } from '@/config'
 
 export default function SignInCard() {
@@ -9,6 +10,7 @@ export default function SignInCard() {
   return (
     <Card withBorder radius="md" p="lg">
       <Stack gap="md">
+        <UnderConstructionBanner />
         <Title order={3}>Sign in</Title>
         <Button component="a" href={`${appConfig.apiBaseUrl}/oauth2/authorization/google`} variant="filled">
           Sign in with Google

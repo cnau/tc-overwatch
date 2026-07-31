@@ -1,0 +1,69 @@
+.banner {
+  overflow: hidden;
+  border: rem(2px) solid #111;
+  border-radius: var(--mantine-radius-md);
+}
+
+.stripes {
+  height: rem(12px);
+  background-image: repeating-linear-gradient(45deg, #111 0 rem(10px), #f5c518 rem(10px) rem(20px));
+  animation: crawl 1.4s linear infinite;
+}
+
+/* 45deg stripes with a 20px period repeat every 20*sqrt(2) along x. */
+@keyframes crawl {
+  to {
+    background-position: rem(28.284px) 0;
+  }
+}
+
+.plaque {
+  padding: var(--mantine-spacing-xs) var(--mantine-spacing-md);
+  background-color: #111;
+}
+
+.sign {
+  width: rem(30px);
+  height: rem(27px);
+  flex-shrink: 0;
+}
+
+.arm {
+  transform-box: view-box;
+  transform-origin: rem(15px) rem(20px);
+  animation: dig 900ms ease-in-out infinite;
+}
+
+@keyframes dig {
+  0%,
+  100% {
+    transform: rotate(-20deg);
+  }
+
+  50% {
+    transform: rotate(12deg);
+  }
+}
+
+.text {
+  color: #f5c518;
+  font-weight: 800;
+  font-size: var(--mantine-font-size-sm);
+  letter-spacing: rem(2px);
+  text-transform: uppercase;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stripes,
+  .arm,
+  .text {
+    animation: none;
+  }
+}
