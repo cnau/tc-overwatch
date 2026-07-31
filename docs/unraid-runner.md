@@ -93,6 +93,20 @@ the checkout lives at a path the host doesn't have, Docker creates an empty
 directory there and mounts *that* — a failure that surfaces much later as a
 Postgres container coming up with no roles provisioned.
 
+The runner also mounts `/mnt/user/tco/.env` read-only, which exists already from
+the app stack. Two different rules are at work and it's worth keeping them
+apart, because assuming one covers the other is what makes this fail:
+
+| Read by | Resolved against | Consequence |
+| --- | --- | --- |
+| Docker daemon — `volumes:` in `docker-compose.unraid.yml` | the **host** filesystem | paths must match what the host sees |
+| compose **client** — `--env-file`, `env_file:`, and anything a job's shell opens | the **runner container's** filesystem | the file must be mounted in |
+
+`--env-file` looks like daemon business because it configures containers that
+run on the host, but compose parses it client-side before it talks to the
+daemon at all. Miss the mount and every deploy job dies at its first compose
+command with `couldn't find env file: /mnt/user/tco/.env`.
+
 ### 4. Migrate the app stack to the pinned compose project name
 
 `docker-compose.unraid.yml` now pins `name: tco`. The stack deployed by hand
@@ -177,6 +191,11 @@ back.
 process isn't in a group that can read `/var/run/docker.sock`. The image runs as
 root by default, which works; if `RUN_AS_ROOT=false` was set, either drop it or add
 the runner user to the socket's group.
+
+**`couldn't find env file: /mnt/user/tco/.env`** — the runner container lacks
+the read-only `.env` mount, or predates it. Recreate it:
+`docker compose -f docker-compose.runner.yml --env-file /mnt/user/tco/.env.runner up -d --force-recreate`.
+A recreate re-registers the runner, so the PAT has to still be valid.
 
 **`Conflict. The container name "/tco-backend" is already in use`** — step 4 was
 skipped. The stack is still under its old project name.
