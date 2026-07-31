@@ -1,0 +1,39 @@
+# detekt overrides. Layered on detekt's defaults (`buildUponDefaultConfig = true`), so this
+# file lists only deviations — every one carries the reason it exists.
+#
+# Division of labour: ktlint owns formatting, detekt owns structure. Where they overlap,
+# ktlint wins and the detekt rule is disabled here. Two tools with different thresholds on
+# the same mechanical question is a permanent tax for no gain.
+
+complexity:
+  # One handler function per exception type is the correct shape for @RestControllerAdvice —
+  # ApiErrorAdvice has 17 and should. Splitting it would fragment the error envelope to
+  # satisfy a metric.
+  TooManyFunctions:
+    ignoreAnnotated: ['RestControllerAdvice']
+
+  # JPA entities carry audit columns (id, createdBy, createdAt, updatedBy, updatedAt,
+  # tenantId) on top of their domain fields, so 7-10 constructor parameters is inherent to
+  # the shape. They can't be data classes (JPA needs stable equals/hashCode), so detekt's
+  # ignoreDataClasses default doesn't cover them.
+  LongParameterList:
+    ignoreAnnotated: ['Entity']
+
+style:
+  # ktlint already enforces line length, at a higher limit than detekt's 120 default, and
+  # passes on the current code. Owning it in one place means one number to argue about.
+  MaxLineLength:
+    active: false
+
+  # Guard-clause chains are the idiom for validation gates. OAuthSuccessHandler's
+  # resolveVerifiedEmail throws three distinct codes (UNSUPPORTED_PRINCIPAL, MISSING_EMAIL,
+  # EMAIL_NOT_VERIFIED); collapsing to two would merge codes and cost operators the
+  # diagnostics #110 just added.
+  ThrowsCount:
+    excludeGuardClauses: true
+
+  # Spring resolves @ExceptionHandler methods by parameter *type*, so the exception parameter
+  # is a framework contract even when the body ignores it — handleUnreadableBody deliberately
+  # won't leak parser internals, handleNoResource returns a generic 404.
+  UnusedParameter:
+    ignoreAnnotated: ['ExceptionHandler']

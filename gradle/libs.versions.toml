@@ -10,6 +10,9 @@ junit                   = "5.12.0"
 mockk                   = "1.13.13"
 assertk                 = "0.28.1"
 detekt                  = "1.23.8"
+# The Kotlin detekt 1.23.8 was compiled against. Pins detekt's analysis classpath only —
+# see server/build.gradle.kts. Remove together with that block when detekt 2.0.0 ships.
+detektEmbeddedKotlin    = "2.0.21"
 ktlintPlugin            = "12.1.2"
 springdocOpenapi        = "3.0.3"
 aspectjweaver           = "1.9.22.1"
