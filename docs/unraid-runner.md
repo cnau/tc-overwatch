@@ -156,6 +156,25 @@ runner but leaves it registered; remove it from Repo Settings → Actions →
 Runners as well, otherwise jobs queue against a runner that is never coming
 back.
 
+## Troubleshooting first-run failures
+
+**`permission denied while trying to connect to the Docker daemon socket`** — the runner
+process isn't in a group that can read `/var/run/docker.sock`. The image runs as
+root by default, which works; if `RUN_AS_ROOT=false` was set, either drop it or add
+the runner user to the socket's group.
+
+**`Conflict. The container name "/tco-backend" is already in use`** — step 4 was
+skipped. The stack is still under its old project name.
+
+**Jobs sit queued forever** — no runner with both `self-hosted` and `unraid`
+labels is online. Check Repo Settings → Actions → Runners and `docker logs
+tco-runner`; an expired PAT looks exactly like this.
+
+**Postgres comes up with no roles, or `tco_app` doesn't exist** — the
+`./scripts/db-init-unraid` bind mount resolved to a path the host doesn't have,
+so Docker mounted an empty directory. Re-check step 3: the work directory must
+be mounted at an identical path on both sides.
+
 ## Fallback
 
 If the runner turns into a maintenance burden, `docs/architecture.md` records
