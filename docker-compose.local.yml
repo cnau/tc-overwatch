@@ -17,7 +17,13 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres_local_password
     ports:
-      - "5432:5432"
+      # 55432 on the host, not 5432. A work kubefwd session forwarding a
+      # Postgres service onto loopback aliases intermittently takes 5432, and
+      # this container then fails to start with "address already in use" —
+      # at unpredictable times, which is worse to diagnose than always.
+      # Container-internal traffic (the migrate service below, and anything on
+      # tco-net) still uses 5432; only the published host port moves.
+      - "55432:5432"
     volumes:
       # Postgres 18+ stores data under /var/lib/postgresql/<major>/docker; mount the parent.
       # See https://github.com/docker-library/postgres/pull/1259.
