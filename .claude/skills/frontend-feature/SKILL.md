@@ -9,12 +9,15 @@ Stack rationale (why Mantine, why no global store) is in `docs/architecture.md` 
 This is how to write code that fits.
 
 **Actually installed**: React 19, TypeScript 5.7, Vite 6, ESLint 9 flat config, Mantine 9
-(`@mantine/core` + `@mantine/hooks`), TanStack Query v5, `openapi-typescript`.
+(`@mantine/core` + `@mantine/hooks`), TanStack Query v5, `openapi-typescript`, **react-router 7**
+(Data Router — import from `react-router`, not `react-router-dom`).
 
 **Pinned but not yet installed** — install per-feature when the first real need lands, not
-preemptively: React Router v6.4+ (Data Router), react-hook-form + Zod
-(`@hookform/resolvers/zod`), Vitest + React Testing Library + user-event + MSW. Update
-`package.json` when you add one.
+preemptively: react-hook-form + Zod (`@hookform/resolvers/zod`), Vitest + React Testing Library
++ user-event + MSW. Update `package.json` when you add one.
+
+**Why 7 and not 8**: react-router 8 requires React `>=19.2.7` and the project is on 19.2.6.
+Bump React first if you want 8; don't do it inside an unrelated feature PR.
 
 ## API modules — the core contract
 
