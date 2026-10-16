@@ -190,6 +190,13 @@ Pull the new tag, copy the printed digest into the file, commit, then
 5 versions per package by CI, but the Unraid side is not. Periodically:
 `docker image prune -a --filter "until=336h"`.
 
+**Restarting or recreating the runner.** Check it's idle first —
+`gh api repos/cnau/tc-overwatch/actions/runners --jq '.runners[].busy'` must
+print `false`. Stopping it mid-job fails that deploy, and GitHub holds the dead
+session for several minutes (`A session for this runner already exists … Runner
+connect error: Error: Conflict`) before the runner can claim the next queued
+job. Re-run the failed job once it reconnects.
+
 **Re-registering from scratch.** Needed if the saved registration goes stale:
 the runner was deleted under Repo Settings → Actions → Runners, or GitHub
 removed it after 14 days offline. Needs a live PAT:

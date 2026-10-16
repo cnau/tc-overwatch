@@ -179,11 +179,19 @@ jobs:
           context: .
           file: server/Dockerfile
           push: true
+          # One plain image manifest per push, not an index. The action's
+          # default attaches a provenance attestation, which makes every push an
+          # index plus untagged child manifests — and the prune below counts and
+          # deletes those children, so older :sha-<short> tags survive as
+          # indexes pointing at images that no longer exist ("manifest unknown"
+          # on pull). Nothing consumes the attestations.
+          provenance: false
           tags: ${{ steps.tags.outputs.tags }}
 
       # Stop GHCR from accumulating every commit's image forever. Keep the
       # 5 most recent versions (latest carries :main + :sha-<short>; older
-      # 4 keep only their :sha-<short>). When we move to tagged releases,
+      # 4 keep only their :sha-<short>) — five rollback targets, which holds
+      # only because provenance is off above. When we move to tagged releases,
       # this prune can be tightened to keep :v* tags indefinitely.
       - name: Prune old image versions
         uses: actions/delete-package-versions@v5
@@ -231,6 +239,7 @@ jobs:
           context: .
           file: frontend/Dockerfile
           push: true
+          provenance: false  # see build-and-push-server
           tags: ${{ steps.tags.outputs.tags }}
 
       - name: Prune old image versions
@@ -280,6 +289,7 @@ jobs:
           context: .
           file: migrate/Dockerfile
           push: true
+          provenance: false  # see build-and-push-server
           tags: ${{ steps.tags.outputs.tags }}
 
       - name: Prune old image versions
