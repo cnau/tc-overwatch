@@ -196,13 +196,13 @@ Upgrade path: Temporal (durable workflows) or Cloud Tasks if/when one of: workfl
 Single repo runs locally with:
 
 ```
-docker compose up -d postgres        # Postgres 18 container, bound to localhost:5432
+docker compose up -d postgres        # Postgres 18 container, bound to localhost:55432
 ./gradlew bootRun                    # Spring Boot dev server on :8080
 cd frontend && npm run dev           # Vite dev server on :5173
 ```
 
 - A separate Google Cloud OAuth client is used for local dev with `http://localhost:8080/login/oauth2/code/google` as the authorized redirect URI (Spring Security's default callback path; the backend is the redirect target, not the SPA — the SPA then receives the minted JWT via fragment). The OAuth client *secret* never lives in `application-local.yml` (which is checked in) — it lives at `~/projects/tc-overwatch-secrets/local.env` (sibling to the repo, outside any path git can touch). IntelliJ run configs load it via the EnvFile plugin (see `.run/backend.run.xml`); CLI invocations source it manually before `./gradlew :server:bootRun`. Env var names: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
-- `docker-compose.local.yml` includes Postgres (and the role-init script under `scripts/db-init/`).
+- `docker-compose.local.yml` includes Postgres (and the role-init script under `scripts/db-init/`). It publishes **55432**, not 5432: a work `kubefwd` session forwarding a Postgres service onto loopback aliases intermittently holds 5432, and the container then fails to start. Only the published host port moves — container-to-container traffic inside the compose network still uses 5432.
 - Background jobs run in-process during local dev (no separate worker container).
 
 ## Deployment

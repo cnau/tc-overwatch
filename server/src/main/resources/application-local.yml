@@ -3,7 +3,7 @@
 
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/tco
+    url: jdbc:postgresql://localhost:55432/tco
     username: tco_app
     password: tco_app_local_password
     driver-class-name: org.postgresql.Driver
