@@ -6,7 +6,7 @@ export default function ActiveTransactionsSection() {
     <DashboardSection title="Active transactions" hint="Sorted by what needs you first">
       <EmptyState
         title="No transactions yet"
-        description="Each property address becomes a transaction once tc-overwatch recognises it in your mail."
+        description="Each property address becomes a transaction once tc-overwatch recognizes it in your mail."
       />
     </DashboardSection>
   )
