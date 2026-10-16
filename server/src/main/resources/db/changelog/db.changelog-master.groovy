@@ -1,9 +1,8 @@
 package db.changelog
 
 databaseChangeLog {
-    // Table-independent helper functions (runOnChange) FIRST so the table-creating
-    // changesets can call them. Table-dependent functions go AFTER the changelogs
-    // that create their referenced tables.
+    // Table-independent functions first so changesets can call them; functions that
+    // reference tables go after the changelog that creates those tables.
     include file: 'fn-tenant-isolation.sql', relativeToChangelogFile: true
 
     include file: 'changelog-001.groovy', relativeToChangelogFile: true

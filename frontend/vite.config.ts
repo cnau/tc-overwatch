@@ -2,9 +2,8 @@ import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// `/api/*`, `/oauth2/*` (OAuth start), and `/login/oauth2/*` (OAuth callback) forward to
-// Spring Boot on :8080. Same-origin during dev — no CORS needed locally. Prod talks to the
-// backend by its public hostname (see docs/architecture.md § CORS).
+// Same-origin in dev, so no CORS locally; prod calls the backend by its public hostname
+// (docs/architecture.md § CORS).
 export default defineConfig({
   plugins: [react()],
   resolve: {

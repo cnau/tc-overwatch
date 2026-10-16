@@ -36,6 +36,15 @@ Three things keep that safe, and all three are load-bearing:
    repos). Defence in depth for the same attack.
 3. **The runner's PAT is scoped to this repo only** — see below.
 
+The runner also mounts the app's `/mnt/user/tco/.env` (step 3), which puts the pilot's secrets
+inside its filesystem. That grants a job nothing it couldn't already take — the Docker socket is
+root-equivalent on the host — so the boundary that matters stays guard 1, not that mount.
+
+The runner is deliberately its **own compose project** (`name: tco-runner`), not a service in
+`docker-compose.unraid.yml`. A deploy job runs `docker compose up -d backend` against the app
+project; a runner inside that project would be a recreate candidate, and the job would kill the
+container executing it.
+
 ## Setup
 
 ### 1. Create the personal access token

@@ -3,8 +3,8 @@ import { SimpleGrid } from '@mantine/core'
 import DashboardSection from '@/components/dashboard/DashboardSection'
 import EmptyState from '@/components/EmptyState'
 
-// Two adjacent feeds per #44, same priority tier: a referral warning is the
-// heads-up that a new-business email is on its way.
+// Two adjacent feeds, one priority tier: a referral warning is the heads-up that a
+// new-business email is on its way.
 export default function NeedsAttentionSection() {
   return (
     <DashboardSection title="Needs you now">

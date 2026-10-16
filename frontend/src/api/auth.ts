@@ -20,9 +20,7 @@ async function fetchMe(): Promise<MeResponse | null> {
 }
 
 async function logout(): Promise<void> {
-  // Fire-and-forget the server endpoint (it's a no-op for stateless bearer
-  // tokens, kept for symmetry / future server-side revocation), then clear
-  // the locally stored token regardless of outcome.
+  // The server call is a no-op for stateless bearer tokens, kept for future revocation.
   try {
     await requestJson<void>('/api/auth/logout', { method: 'POST' })
   } catch {

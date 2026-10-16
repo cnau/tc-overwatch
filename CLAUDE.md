@@ -68,7 +68,8 @@ Dockerfiles, shell, and `nginx.conf`.
 - **Default to none.** If the code can be made clear enough to stand alone, do that instead.
 - **A comment carries *why*** — a hidden constraint, a workaround for a specific bug, an invariant a
   reader would otherwise break — never what the code already says.
-- **Ceilings:** 2 lines in code; 4 in config and infra files. Longer rationale goes in
+- **Ceilings:** 2 lines in code; 4 in config and infra files (Gradle build scripts count as
+  config). Longer rationale goes in
   `docs/architecture.md` or the relevant runbook, and the comment points there.
 - **Never restate a project rule** — the rule doc is the source of truth, and a copy drifts.
 - **No issue or PR numbers, no change history.** What was broken and when belongs in the commit, PR,

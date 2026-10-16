@@ -1,8 +1,4 @@
-# Backend runtime image. Assumes the bootJar is already built — CI runs
-# ./gradlew :server:bootJar before docker build, and uses the repo root as the
-# build context so this Dockerfile can reach server/build/libs/.
-#
-# Build locally:
+# Copies a prebuilt bootJar, so build it first; the context is the repo root:
 #   ./gradlew :server:bootJar
 #   docker build -t tc-overwatch-server:dev -f server/Dockerfile .
 

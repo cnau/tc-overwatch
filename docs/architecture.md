@@ -354,6 +354,9 @@ Smoke tests hit the public Cloudflare hostnames rather than the containers on th
 
 - Every build tags the image with the **commit SHA** as `sha-<short>` (immutable, traceable). This is the tag the Unraid deploy jobs pin and the tag a rollback names.
 - `main` is a **moving tag** pointing at the latest successful main build.
+- GHCR keeps the **5 most recent versions** per package — five rollback targets. That holds only
+  because builds set `provenance: false`: with an attestation, each push is an index plus untagged
+  child manifests, and the prune deletes the children older tags point at (`manifest unknown`).
 - Release versions (`v0.1.0`, `v1.0.0`) are immutable tags for prod deploys.
 - Unraid pilot tracks `main` (continuous deployment is fine — single user, fast feedback loop).
 - GCP production tracks release tags only — explicit promotion, no surprise upgrades.

@@ -3,8 +3,8 @@ import { Accordion } from '@mantine/core'
 import DashboardSection from '@/components/dashboard/DashboardSection'
 import EmptyState from '@/components/EmptyState'
 
-// Collapsed by design: #45 calls these audit surfaces the TC pulls when she
-// wants them, not work pushed at her. Her problem is too much to look at.
+// Collapsed by design: audit surfaces the TC pulls when she wants them, not work
+// pushed at her.
 const QUEUES = [
   {
     value: 'unmatched',

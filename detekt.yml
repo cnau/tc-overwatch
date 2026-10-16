@@ -1,9 +1,6 @@
-# detekt overrides. Layered on detekt's defaults (`buildUponDefaultConfig = true`), so this
-# file lists only deviations — every one carries the reason it exists.
-#
-# Division of labour: ktlint owns formatting, detekt owns structure. Where they overlap,
-# ktlint wins and the detekt rule is disabled here. Two tools with different thresholds on
-# the same mechanical question is a permanent tax for no gain.
+# Deviations from detekt's defaults only (`buildUponDefaultConfig = true`), each with its
+# reason. ktlint owns formatting, detekt owns structure: where they overlap, the detekt rule
+# is disabled here rather than running two thresholds on one question.
 
 complexity:
   # One handler function per exception type is the correct shape for @RestControllerAdvice —
@@ -25,10 +22,8 @@ style:
   MaxLineLength:
     active: false
 
-  # Guard-clause chains are the idiom for validation gates. OAuthSuccessHandler's
-  # resolveVerifiedEmail throws three distinct codes (UNSUPPORTED_PRINCIPAL, MISSING_EMAIL,
-  # EMAIL_NOT_VERIFIED); collapsing to two would merge codes and cost operators the
-  # diagnostics #110 just added.
+  # Guard-clause chains are the idiom for validation gates: resolveVerifiedEmail's three
+  # distinct error codes would merge into two, losing operator diagnostics.
   ThrowsCount:
     excludeGuardClauses: true
 

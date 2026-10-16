@@ -9,11 +9,8 @@ import org.springframework.security.core.context.SecurityContextHolder
 import java.util.Optional
 import java.util.UUID
 
-// Wires Spring's @CreatedBy / @LastModifiedBy / @CreatedDate / @LastModifiedDate on
-// entities annotated @EntityListeners(AuditingEntityListener::class). Reads the
-// authenticated principal's userId from the current SecurityContext when present —
-// stub login and pre-acceptance sign-in have no userId yet, so audit fields stay
-// NULL there ("system-created").
+// Stub login and pre-acceptance sign-in have no userId yet, so audit fields stay NULL
+// ("system-created") rather than failing.
 @Configuration
 @EnableJpaAuditing(auditorAwareRef = "auditorAware")
 class AuditingConfig {

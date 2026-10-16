@@ -1,10 +1,6 @@
-# Frontend runtime image: Nginx serving the production Vite bundle.
-#
-# Build locally (from repo root):
+# Nginx serving the production Vite bundle. Build from the repo root:
 #   docker build -t tc-overwatch-frontend:dev -f frontend/Dockerfile .
-#
-# To bump a base image: `docker pull <ref>` and copy the printed digest into
-# the FROM line below.
+# To bump a base image, `docker pull` it and copy the printed digest into FROM.
 
 # --- Stage 1: build the Vite bundle ---
 FROM node:22-alpine@sha256:968df39aedcea65eeb078fb336ed7191baf48f972b4479711397108be0966920 AS builder

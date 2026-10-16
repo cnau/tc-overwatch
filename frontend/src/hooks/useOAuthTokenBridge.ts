@@ -6,9 +6,8 @@ import { setAuthToken } from '@/api/http'
 const TOKEN_HASH_PREFIX = '#token='
 const AUTH_ME_KEY = ['auth', 'me'] as const
 
-// Reads the post-OAuth handoff: token in URL fragment (so the server never sees
-// it in logs), error code in query string. Both get cleared via replaceState so
-// they don't sit in browser history. Returns the error code (if any) for the UI.
+// The token rides the fragment so server logs never see it. Token and ?error are both
+// cleared via replaceState so neither sits in browser history.
 export function useOAuthTokenBridge(): string | null {
   const qc = useQueryClient()
   const [oauthError, setOAuthError] = useState<string | null>(null)

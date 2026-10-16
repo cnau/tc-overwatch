@@ -5,17 +5,9 @@ on:
     branches: [main]
   pull_request:
 
-# Build + deploy pipelines per docs/architecture.md § CI/CD.
-# build-and-push-* land the runtime images in GHCR on every main-branch
-# commit; deploy-unraid-* pull those images onto the Unraid pilot box via the
-# self-hosted runner (docs/unraid-runner.md). deploy-prod-* come later.
-#
-# SECURITY — this repo is public, and the deploy jobs run on a self-hosted
-# runner sitting on a home network with the host Docker socket mounted. The
-# `if: github.event_name == 'push' && github.ref == 'refs/heads/main'` guard on
-# every self-hosted job is what keeps a forked pull request from executing
-# attacker-authored steps there. Never drop that guard, and never add
-# `runs-on: [self-hosted, unraid]` to a job reachable from `pull_request`.
+# SECURITY: public repo, and deploy-unraid-* run on a self-hosted runner holding
+# the host Docker socket. Every self-hosted job keeps the push-on-main `if:`
+# guard; never make one reachable from pull_request (docs/unraid-runner.md).
 
 jobs:
   build-server:
@@ -179,20 +171,12 @@ jobs:
           context: .
           file: server/Dockerfile
           push: true
-          # One plain image manifest per push, not an index. The action's
-          # default attaches a provenance attestation, which makes every push an
-          # index plus untagged child manifests — and the prune below counts and
-          # deletes those children, so older :sha-<short> tags survive as
-          # indexes pointing at images that no longer exist ("manifest unknown"
-          # on pull). Nothing consumes the attestations.
+          # Without this the prune below deletes the images older tags point at
+          # (docs/architecture.md § Image tagging strategy).
           provenance: false
           tags: ${{ steps.tags.outputs.tags }}
 
-      # Stop GHCR from accumulating every commit's image forever. Keep the
-      # 5 most recent versions (latest carries :main + :sha-<short>; older
-      # 4 keep only their :sha-<short>) — five rollback targets, which holds
-      # only because provenance is off above. When we move to tagged releases,
-      # this prune can be tightened to keep :v* tags indefinitely.
+      # Five rollback targets; keep :v* tags indefinitely once releases exist.
       - name: Prune old image versions
         uses: actions/delete-package-versions@v5
         with:
@@ -299,14 +283,8 @@ jobs:
           package-type: container
           min-versions-to-keep: 5
 
-  # Unraid pilot deploy — backend half. Needs the migrate image too: the
-  # schema is applied by a one-shot migrate container built from the same
-  # commit, so an entity change and its changeset ship together or not at all.
-  #
-  # Serial by construction: migrate runs to completion, then the backend
-  # restarts. A failed migration fails the job before the new backend image is
-  # ever started, so the old container keeps serving instead of crash-looping
-  # against a half-migrated schema.
+  # Migrate runs to completion before the backend restarts, so a failed
+  # migration fails the job while the old backend keeps serving.
   deploy-unraid-server:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [build-and-push-server, build-and-push-migrate]
@@ -349,12 +327,8 @@ jobs:
       - name: Run DB migrations (one-shot container)
         run: $COMPOSE run --rm migrate
 
-      # --no-deps because the previous step already satisfied them. Without it
-      # compose re-evaluates backend's `depends_on: migrate
-      # (service_completed_successfully)` and starts the migrate *service*
-      # container to satisfy it — a second, redundant Liquibase run whose
-      # failure would surface as a confusing backend-restart failure rather
-      # than as the migration step.
+      # --no-deps: otherwise backend's depends_on re-runs Liquibase, and a
+      # failure there surfaces as a confusing restart failure.
       - name: Restart backend
         run: $COMPOSE up -d --no-deps backend
 

@@ -1,39 +1,8 @@
-# Unraid pilot stack. Bring up via:
-#
-#   docker compose -f docker-compose.unraid.yml \
-#     --env-file /mnt/user/tco/.env up -d
-#
-# Two independent uses of the same .env file:
-#   - `--env-file` feeds compose's ${VAR} interpolation in THIS file.
-#   - `env_file:` directives below pass variables through to each container.
-# Forgetting `--env-file` fails fast with a clear "missing X" error (via the
-# ${VAR:?...} fallbacks below), rather than silently substituting empty
-# strings. The .env file lives at /mnt/user/tco/.env with mode 0600, outside
-# the repo. See .env.unraid.example for the required keys.
-#
-# Cloudflare-side setup happens out-of-band in the Zero Trust dashboard:
-# create a tunnel (Networks → Tunnels), copy its token into TUNNEL_TOKEN in
-# /mnt/user/tco/.env, and add two public hostnames inside that tunnel:
-#   app.<domain> → HTTP → frontend:80
-#   api.<domain> → HTTP → backend:8080
-# Routing config lives in the dashboard, not here.
-#
-# Image tags default to `main` — what a hand-run `up -d` on the box gets. The
-# deploy-unraid-* CI jobs override the one service they own with that commit's
-# immutable `sha-<short>` tag, so a deploy ships exactly the reviewed commit
-# and never races the moving `main` tag. Rollback is the same command with an
-# older SHA:
-#
-#   TCO_SERVER_TAG=sha-abc1234 docker compose -f docker-compose.unraid.yml \
-#     --env-file /mnt/user/tco/.env up -d backend
-#
-# Caveat of the defaults: a bare `up -d` (no tag vars) pulls every service back
-# to `main`, discarding a SHA-pinned rollback. Deploy one service at a time.
+# Unraid pilot stack. Setup, Cloudflare Tunnel, image tags and rollback:
+# docs/unraid-stack.md. Always pass --env-file /mnt/user/tco/.env.
 
-# Pinned so the project identity doesn't depend on the directory compose runs
-# from. Without this, a CI checkout under the runner's workspace is a different
-# project than a hand-run from /mnt/user/tco/repo, and the second one collides
-# on the container_name values below instead of adopting the running stack.
+# Pinned so a CI checkout and a hand-run from /mnt/user/tco/repo are one
+# project (docs/architecture.md § Unraid deploy).
 name: tco
 
 services:
