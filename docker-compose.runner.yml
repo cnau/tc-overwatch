@@ -36,6 +36,17 @@ services:
       # The image pins its own runner version and we pin its digest; letting it
       # self-update would silently drift off the pinned artifact.
       DISABLE_AUTO_UPDATE: "true"
+      # Register once and reuse that registration across restarts and
+      # recreates. By default the entrypoint re-registers on every start and
+      # deregisters on every stop, so a reboot needs a live PAT — and a restart
+      # that finds the previous credentials still in the container dies on
+      # "Cannot configure the runner because it is already configured" and
+      # loops. With a state dir set, the entrypoint copies the saved
+      # registration back in and skips config.sh entirely. The image refuses to
+      # start with reuse on and automatic deregistration still enabled — it
+      # would deregister on stop, then reuse dead credentials on start.
+      CONFIGURED_ACTIONS_RUNNER_FILES_DIR: /mnt/user/tco/runner/state
+      DISABLE_AUTOMATIC_DEREGISTRATION: "true"
     volumes:
       # Jobs drive the host's Docker daemon rather than nesting one. The runner
       # is therefore as privileged as the host Docker socket — see the security
@@ -48,6 +59,10 @@ services:
       # same absolute path the host sees. Mount it anywhere else and compose
       # silently bind-mounts an empty directory it created.
       - /mnt/user/tco/runner/_work:/mnt/user/tco/runner/_work
+      # The saved registration (see CONFIGURED_ACTIONS_RUNNER_FILES_DIR). Holds
+      # the runner's private key, so it lives outside _work, where job
+      # checkouts land, and is created 0700 — docs/unraid-runner.md step 3.
+      - /mnt/user/tco/runner/state:/mnt/user/tco/runner/state
       # The app stack's .env, read-only. Easy to assume this is unnecessary
       # because the *containers* it configures run on the host — but `--env-file`
       # and the `env_file:` service directives are resolved by the compose
