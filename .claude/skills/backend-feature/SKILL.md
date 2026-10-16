@@ -174,12 +174,8 @@ preemptively**:
 
 ## Comments
 
-**Default to no comments; when you write one, 2 lines or less.** If it needs three, the code is
-the wrong shape — fix the code, or lift the explanation into this skill. **Never restate a
-project rule in a code comment** — the rule docs are the source of truth, and a duplicated rule
-drifts. A comment earns its place only when the *why* is non-obvious: a hidden constraint, a
-workaround for a specific bug, an invariant a reader would otherwise miss. Don't explain what
-the code does; identifiers do that.
+The rule lives in root `CLAUDE.md` § Comments. If a comment needs more than the ceiling, the code
+is the wrong shape — fix the code, or lift the explanation into this skill.
 
 ## Kotlin specifics that differ from defaults
 

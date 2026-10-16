@@ -17,6 +17,14 @@ once in `~/projects/CLAUDE.md`. Read it before any `gh` or `git push` operation.
 Architecture decisions are pinned via explicit trade-off discussions. Surface the case for
 changing one — don't silently diverge.
 
+Skills load on demand; these have a moment that must not be missed:
+
+- `committing` — before every `git commit`, and before pushing a branch for review.
+- `writing-prs` — before drafting or editing a PR body.
+- `writing-issues` — before writing or rewriting a GitHub issue.
+- `backend-feature`, `frontend-feature`, `db-migrations` — before code in `server/`,
+  `frontend/`, or the Liquibase changelogs respectively.
+
 ## Greenfield
 
 No legacy code. What you ship today becomes the baseline other code copies, so a shortcut
@@ -39,6 +47,38 @@ now is a pattern, not an isolated compromise.
   a per-environment config file. Secrets are never committed.
 - **The backend never bundles the frontend.** They build and deploy as separate images.
 
+## Principles
+
+**Keep it simple.** The minimum code that solves the problem. No abstraction until it's needed in
+more than one place *now* — three similar lines beat a premature helper.
+
+**Change only what's asked.** A bug fix is a bug fix: no refactoring around it, no comments or type
+annotations on lines you didn't otherwise change.
+
+**Plan non-trivial issues before coding.** When an issue leaves more than one non-obvious decision
+open, state the approach, each decision with the alternative you rejected, and the files in scope —
+in the conversation, before writing code. Skip it when the issue leaves one reasonable
+implementation.
+
+## Comments
+
+Applies to every file — Kotlin, TypeScript, Groovy, SQL, and equally YAML, compose, CI workflows,
+Dockerfiles, shell, and `nginx.conf`.
+
+- **Default to none.** If the code can be made clear enough to stand alone, do that instead.
+- **A comment carries *why*** — a hidden constraint, a workaround for a specific bug, an invariant a
+  reader would otherwise break — never what the code already says.
+- **Ceilings:** 2 lines in code; 4 in config and infra files. Longer rationale goes in
+  `docs/architecture.md` or the relevant runbook, and the comment points there.
+- **Never restate a project rule** — the rule doc is the source of truth, and a copy drifts.
+- **No issue or PR numbers, no change history.** What was broken and when belongs in the commit, PR,
+  or issue; a comment describes the code as it now stands.
+- **A new file gets no exemption.** Its budget is its directory's: a file you add must not be the
+  most heavily commented one in its directory.
+- **Editing a comment means bringing the whole block in line**, not patching the line you came for.
+
+The `committing` skill turns this into checks to run against a diff.
+
 ## Conventions
 
 - **Kotlin DSL** for all Gradle build files. **Liquibase Groovy DSL** for migrations
@@ -56,10 +96,9 @@ now is a pattern, not an isolated compromise.
 - Branch from `main` as `feat/<slug>` or `chore/<slug>`. Issue numbers go in the PR body, not
   the branch name.
 - Commit subjects are sentence case, no `feat:` prefix, optionally scoped
-  (`Unraid: trust X-Forwarded-Proto…`). The body explains the failure mode and why this fix —
-  see `git log` for the standard.
-- Work is tracked in GitHub Issues + Projects. For issue and PR prose, use the
-  `writing-issues-and-prs` skill.
+  (`Unraid: trust X-Forwarded-Proto…`). The body explains the failure mode and why this fix, in
+  six lines or fewer — the `committing` skill has the shape.
+- Work is tracked in GitHub Issues + Projects.
 
 ## When to add a rules file
 

@@ -228,6 +228,5 @@ in `package.json`. Installing them is part of writing the first test. The conven
 
 ## Comments
 
-**Default to no comments; 2 lines or less when you write one.** If it needs three, the code is
-the wrong shape — fix it, or lift the explanation into this skill. Never restate a project rule
-in a code comment. A comment earns its place only when the *why* is non-obvious.
+The rule lives in root `CLAUDE.md` § Comments. If a comment needs more than the ceiling, the code
+is the wrong shape — fix the code, or lift the explanation into this skill.
