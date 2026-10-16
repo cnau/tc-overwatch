@@ -56,16 +56,21 @@ which is why it gets an expiry rather than living on the box forever.
 does and doesn't hurt, because the failure is latent: the PAT is read only at
 *registration*, when the container's entrypoint exchanges it for a short-lived
 registration token. After that the runner polls GitHub with its own credentials,
-so steady-state job claiming never touches the PAT. Those credentials live in
-the container filesystem, which is not on a volume — a plain restart or an
-Unraid reboot keeps them, but any **recreate** (image bump, edit to
-`docker-compose.runner.yml`, `down`/`up`) re-registers and needs a live token.
+so steady-state job claiming never touches the PAT.
 
-So an expired PAT is invisible for weeks and then surfaces the next time you
-touch the runner for an unrelated reason — as a runner that never comes back
-and jobs that queue. If tracking the expiry becomes a nuisance, swap the PAT
-for a GitHub App (`APP_ID` + `APP_PRIVATE_KEY`, both accepted by this image):
+Those credentials are saved to `/mnt/user/tco/runner/state` (step 3), and every
+start — restart, Unraid reboot, or recreate after an image bump — copies them
+back in and skips registration. So the PAT is needed only when that directory
+is empty: the first start, or after you wipe it to re-register (see
+Operations). An expired PAT is harmless until then, which is exactly why it's
+easy to forget. If tracking the expiry becomes a nuisance, swap the PAT for a
+GitHub App (`APP_ID` + `APP_PRIVATE_KEY`, both accepted by this image):
 installation tokens auto-renew, so the cliff disappears entirely.
+
+The image's default is the opposite — register on every start, deregister on
+every stop — and that default is what this setup turns off. Under it, a reboot
+needed a live PAT, and a restart that found the previous registration still in
+the container failed outright (see Troubleshooting).
 
 ### 2. Write the runner env file
 
@@ -79,11 +84,16 @@ ACCESS_TOKEN=github_pat_...
 EOF
 ```
 
-### 3. Create the work directory
+### 3. Create the work and state directories
 
 ```bash
 mkdir -p /mnt/user/tco/runner/_work
+install -d -m 0700 /mnt/user/tco/runner/state
 ```
+
+`state` holds the runner's saved registration, including the private key it
+authenticates to GitHub with — hence `0700`, and hence a sibling of `_work`
+rather than inside it, where job checkouts land.
 
 This path is bind-mounted into the runner **at the same absolute path** it has
 on the host, and that is not cosmetic. Bind mounts in a compose file are
@@ -180,10 +190,22 @@ Pull the new tag, copy the printed digest into the file, commit, then
 5 versions per package by CI, but the Unraid side is not. Periodically:
 `docker image prune -a --filter "until=336h"`.
 
+**Re-registering from scratch.** Needed if the saved registration goes stale:
+the runner was deleted under Repo Settings → Actions → Runners, or GitHub
+removed it after 14 days offline. Needs a live PAT:
+
+```bash
+cd /mnt/user/tco/repo
+docker compose -f docker-compose.runner.yml down
+rm -rf /mnt/user/tco/runner/state && install -d -m 0700 /mnt/user/tco/runner/state
+docker compose -f docker-compose.runner.yml --env-file /mnt/user/tco/.env.runner up -d
+```
+
 **Deregistering.** `docker compose -f docker-compose.runner.yml down` stops the
 runner but leaves it registered; remove it from Repo Settings → Actions →
 Runners as well, otherwise jobs queue against a runner that is never coming
-back.
+back. Empty `/mnt/user/tco/runner/state` too, or a later `up` will try to reuse
+the deleted registration.
 
 ## Troubleshooting first-run failures
 
@@ -195,16 +217,26 @@ the runner user to the socket's group.
 **`couldn't find env file: /mnt/user/tco/.env`** — the runner container lacks
 the read-only `.env` mount, or predates it. Recreate it:
 `docker compose -f docker-compose.runner.yml --env-file /mnt/user/tco/.env.runner up -d --force-recreate`.
-A recreate re-registers the runner, so the PAT has to still be valid.
+The recreate reuses the saved registration, so the PAT doesn't matter here.
+
+**`Cannot configure the runner because it is already configured`**, then
+`Value cannot be null. (Parameter 'configuredSettings')` and a restart loop —
+the container is running without `CONFIGURED_ACTIONS_RUNNER_FILES_DIR`, so the
+entrypoint tried to register again over the registration left from its last
+run. The compose file sets it; a container from before that change needs one
+recreate (command above, live PAT required since `state` starts empty).
+
+**`Reusage is enabled` followed by an authentication failure** — the saved
+registration points at a runner GitHub no longer knows about. Re-register from
+scratch (Operations).
 
 **`Conflict. The container name "/tco-backend" is already in use`** — step 4 was
 skipped. The stack is still under its old project name.
 
 **Jobs sit queued forever** — no runner with both `self-hosted` and `unraid`
 labels is online. Check Repo Settings → Actions → Runners and `docker logs
-tco-runner`. If this appeared right after recreating the runner container, and
-the log shows a registration failure rather than `Listening for Jobs`, the PAT
-expired — see step 1.
+tco-runner`. If the log shows a registration failure rather than `Listening for
+Jobs`, the state directory was empty and the PAT has expired — see step 1.
 
 **Postgres comes up with no roles, or `tco_app` doesn't exist** — the
 `./scripts/db-init-unraid` bind mount resolved to a path the host doesn't have,
