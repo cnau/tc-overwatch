@@ -1,19 +1,5 @@
-# Self-hosted GitHub Actions runner for the Unraid pilot. Bring up via:
-#
-#   docker compose -f docker-compose.runner.yml \
-#     --env-file /mnt/user/tco/.env.runner up -d
-#
-# Full setup, including the PAT scopes and the security constraints that make
-# a self-hosted runner on a *public* repo safe, is in docs/unraid-runner.md.
-# Read that before running this.
-#
-# Deliberately its own compose project (`name:` below), not a service inside
-# docker-compose.unraid.yml: a deploy job runs `docker compose up -d backend`
-# against the app project, and a runner living in that project would be a
-# recreate candidate — the job would kill the container executing it.
-#
-# The runner makes only outbound calls to GitHub to claim jobs. No inbound
-# port, no firewall hole — the same posture as the Cloudflare Tunnel.
+# Self-hosted GitHub Actions runner that deploys the Unraid stack. Setup,
+# security constraints and operations: docs/unraid-runner.md — read it first.
 
 name: tco-runner
 
@@ -36,45 +22,18 @@ services:
       # The image pins its own runner version and we pin its digest; letting it
       # self-update would silently drift off the pinned artifact.
       DISABLE_AUTO_UPDATE: "true"
-      # Register once and reuse that registration across restarts and
-      # recreates. By default the entrypoint re-registers on every start and
-      # deregisters on every stop, so a reboot needs a live PAT — and a restart
-      # that finds the previous credentials still in the container dies on
-      # "Cannot configure the runner because it is already configured" and
-      # loops. With a state dir set, the entrypoint copies the saved
-      # registration back in and skips config.sh entirely. The image refuses to
-      # start with reuse on and automatic deregistration still enabled — it
-      # would deregister on stop, then reuse dead credentials on start.
+      # Register once and reuse it across restarts; the image's default of
+      # re-registering on every start loops on restart. Required as a pair.
       CONFIGURED_ACTIONS_RUNNER_FILES_DIR: /mnt/user/tco/runner/state
       DISABLE_AUTOMATIC_DEREGISTRATION: "true"
     volumes:
-      # Jobs drive the host's Docker daemon rather than nesting one. The runner
-      # is therefore as privileged as the host Docker socket — see the security
-      # section of docs/unraid-runner.md.
+      # Root-equivalent on the host — docs/unraid-runner.md § Security constraints.
       - /var/run/docker.sock:/var/run/docker.sock
-      # Identical path on both sides, and it must be. Bind mounts declared in a
-      # compose file are resolved by the *host* daemon, not by the container
-      # issuing the command, so docker-compose.unraid.yml's relative
-      # ./scripts/db-init-unraid mount only resolves if the checkout sits at the
-      # same absolute path the host sees. Mount it anywhere else and compose
-      # silently bind-mounts an empty directory it created.
+      # Same absolute path on both sides: compose bind mounts resolve on the
+      # host daemon, so any other path silently mounts an empty directory.
       - /mnt/user/tco/runner/_work:/mnt/user/tco/runner/_work
-      # The saved registration (see CONFIGURED_ACTIONS_RUNNER_FILES_DIR). Holds
-      # the runner's private key, so it lives outside _work, where job
-      # checkouts land, and is created 0700 — docs/unraid-runner.md step 3.
+      # Holds the runner's private key — outside _work, created 0700.
       - /mnt/user/tco/runner/state:/mnt/user/tco/runner/state
-      # The app stack's .env, read-only. Easy to assume this is unnecessary
-      # because the *containers* it configures run on the host — but `--env-file`
-      # and the `env_file:` service directives are resolved by the compose
-      # *client*, which is this container. Without it every compose command in a
-      # deploy job dies with `couldn't find env file: /mnt/user/tco/.env`, before
-      # it ever reaches the daemon. scripts/smoke.sh reads the same file for the
-      # two public base URLs.
-      #
-      # This does put the pilot's secrets inside the runner's filesystem, which
-      # is the arrangement docs/architecture.md § Unraid deploy already assumes
-      # ("the runner has local access to the .env file on Unraid"). It grants a
-      # job nothing it couldn't already take: the Docker socket above is
-      # root-equivalent on the host. The boundary that matters stays the
-      # push-on-main guard in ci.yml, not this mount.
+      # --env-file and env_file: are read by the compose client, which runs in
+      # here; without this every deploy dies on "couldn't find env file".
       - /mnt/user/tco/.env:/mnt/user/tco/.env:ro

@@ -14,10 +14,8 @@ export class ApiError extends Error {
   }
 }
 
-// Bearer token persists across browser restarts (mirroring how iOS Keychain
-// persists across app restarts — *lifecycle* parallel, not a security claim).
-// XSS exfiltration risk is accepted; mitigations live at the SPA's CSP +
-// dependency-vetting level, not at the token-storage level.
+// Persists across browser restarts. XSS exfiltration is an accepted risk, mitigated by
+// CSP and dependency vetting rather than at the storage level.
 const TOKEN_KEY = 'tco_auth_token'
 
 export const getAuthToken = (): string | null => localStorage.getItem(TOKEN_KEY)
@@ -52,9 +50,8 @@ export async function requestJson<T>(input: RequestInfo | URL, init: RequestInit
   return (await res.json()) as T
 }
 
-// Prepend the runtime apiBaseUrl to leading-slash string URLs. Absolute URLs,
-// Request objects, and URL instances pass through unchanged. Empty apiBaseUrl
-// (dev) leaves the relative path alone for the Vite proxy to forward.
+// Only leading-slash strings get apiBaseUrl; empty (dev) leaves them relative for the
+// Vite proxy.
 function withBaseUrl(input: RequestInfo | URL): RequestInfo | URL {
   if (typeof input !== 'string') return input
   if (!input.startsWith('/')) return input

@@ -4,9 +4,8 @@ import UnderConstructionBanner from '@/components/UnderConstructionBanner'
 import { appConfig } from '@/config'
 
 export default function SignInCard() {
-  // OAuth start is a top-level navigation, not a fetch — apiBaseUrl prepending
-  // can't ride through http.ts here, so we apply it inline. Empty apiBaseUrl
-  // (dev) leaves the path relative for the Vite proxy.
+  // A top-level navigation, not a fetch, so http.ts can't prefix apiBaseUrl; empty (dev)
+  // leaves the path relative for the Vite proxy.
   return (
     <Card withBorder radius="md" p="lg">
       <Stack gap="md">

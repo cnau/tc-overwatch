@@ -1,16 +1,7 @@
 #!/usr/bin/env bash
-# Block until a container reports healthy, or fail loudly.
-#
-#   ./scripts/wait-for-healthy.sh tco-backend 120
-#
-# Takes a container name (not a compose service name) so it needs no compose
-# context — no -f flag, no --env-file, no project-name guessing. The deploy
-# jobs already know the container names because docker-compose.unraid.yml
-# pins them.
-#
-# Exits non-zero on: unknown container, no healthcheck declared, `unhealthy`
-# status, or timeout. A container that exits mid-wait fails immediately rather
-# than burning the full timeout.
+# Block until a container is healthy, or fail loudly: wait-for-healthy.sh tco-backend 120
+# Takes a container name, not a service, so it needs no compose context. Fails fast on an
+# unknown container, no healthcheck, `unhealthy`, or the container exiting mid-wait.
 
 set -euo pipefail
 

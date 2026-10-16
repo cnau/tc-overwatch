@@ -1,22 +1,15 @@
-# Liquibase one-shot migration image. Independent of the Spring Boot server:
-# this is the only place Liquibase lives.
-#
-# Build locally (from repo root):
+# One-shot Liquibase migrations — the only place Liquibase lives. From repo root:
 #   docker build -t tc-overwatch-migrate:dev -f migrate/Dockerfile .
-#
-# To bump the base image: `docker pull liquibase/liquibase:<new-tag>` then copy
-# the printed digest into the FROM line below.
+# To bump the base image, `docker pull` it and copy the printed digest into FROM.
 
 FROM liquibase/liquibase:4.32@sha256:fbee3db36feece76da4207e9cca12873efecc057aba074232338bff600c19246
 
 LABEL org.opencontainers.image.source="https://github.com/cnau/tc-overwatch"
 LABEL org.opencontainers.image.description="tc-overwatch Liquibase migrations"
 
-# Groovy DSL extension — our changelogs are *.groovy. Not in lpm's catalog,
-# so pulled directly from Maven Central with SHA-256 pins (BuildKit verifies
-# before COPY). Groovy 3.0.17 matches what liquibase-groovy-dsl 4.0.0 resolves
-# transitively. To bump a version: update the URL + checksum together (fetch
-# the new checksum from Maven Central's `<jar>.sha256` sibling file).
+# Groovy DSL for our *.groovy changelogs; not in lpm, so pinned from Maven Central.
+# Groovy 3.0.17 is what liquibase-groovy-dsl 4.0.0 resolves. Bump URL and checksum
+# together — the checksum is Maven Central's `<jar>.sha256` sibling file.
 ADD --chown=liquibase:liquibase \
     --checksum=sha256:881525567caae594701228279857d90953b77bf3f48cf4925f844487dc61d749 \
     https://repo1.maven.org/maven2/org/liquibase/liquibase-groovy-dsl/4.0.0/liquibase-groovy-dsl-4.0.0.jar \

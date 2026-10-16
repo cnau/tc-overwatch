@@ -1,26 +1,8 @@
 #!/usr/bin/env bash
-# Post-deploy smoke test. Called by the deploy-unraid-* CI jobs; safe to run
-# by hand from anywhere that can reach the public hostnames.
-#
-#   ./scripts/smoke.sh          # every check
-#   ./scripts/smoke.sh api      # backend only  (deploy-unraid-server)
-#   ./scripts/smoke.sh app      # frontend only (deploy-unraid-frontend)
-#
-# Scoped on purpose: a backend deploy must not fail because the frontend is
-# down, and vice versa — the two pipelines are independent by design (see
-# docs/architecture.md § Unraid deploy).
-#
-# These hit the *public* Cloudflare hostnames rather than the containers on the
-# docker network, so a green run also proves the tunnel and its hostname
-# routing survived the deploy — the failure mode a container-local curl misses.
-#
-# Base URLs resolve from, in order:
-#   1. SMOKE_API_BASE_URL / SMOKE_APP_BASE_URL
-#   2. APP_API_BASE_URL / APP_FRONTEND_BASE_URL in $TCO_ENV_FILE
-#      (default /mnt/user/tco/.env — the same file compose reads)
-# The env file is grepped for those two keys, never sourced: it also holds DB
-# passwords, the JWT secret, and the tunnel token, and sourcing it would put
-# all of them into the CI job's environment.
+# Post-deploy smoke test against the public hostnames (why: docs/architecture.md
+# § Unraid deploy). `smoke.sh api` or `smoke.sh app` checks one side; no arg, both.
+# Base URLs: SMOKE_{API,APP}_BASE_URL, else grepped from $TCO_ENV_FILE (default
+# /mnt/user/tco/.env) — never sourced, since that file holds every secret.
 
 set -euo pipefail
 

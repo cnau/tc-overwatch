@@ -1,17 +1,5 @@
--- Local-dev DB role + schema setup. Runs once at first Postgres container start.
---
--- Mirrors the three-role pattern documented in docs/architecture.md § Multi-tenancy:
---   tco_app     — no BYPASSRLS, used by the application for normal request-scoped work
---   tco_admin   — has BYPASSRLS, used only via the explicit withAdminConnection { ... }
---                 marker for tenant provisioning, admin RPCs, system-wide jobs
---   tco_migrate — superuser-equivalent for DDL (Liquibase migrations)
---
--- Application data lives in the `tco` schema; `public` is reserved for Postgres
--- extensions (pg_trgm, etc.). search_path on every role is set so queries use
--- unqualified table names that resolve to `tco` first.
---
--- Production roles are provisioned through Cloud SQL IAM / Secret Manager, not this script.
--- Passwords here are for LOCAL DEV ONLY.
+-- Local-dev roles (docs/architecture.md § Multi-tenancy) and the `tco` schema, once at
+-- first Postgres start. `public` is left for extensions. Passwords are local-only.
 
 CREATE ROLE tco_app     LOGIN PASSWORD 'tco_app_local_password';
 CREATE ROLE tco_admin   LOGIN PASSWORD 'tco_admin_local_password' BYPASSRLS;

@@ -1,12 +1,7 @@
 #!/usr/bin/env bash
-# Provision the three application roles documented in docs/architecture.md
-# § Multi-tenancy. Runs once at first Postgres container start (Postgres's
-# docker-entrypoint executes anything in /docker-entrypoint-initdb.d/ after
-# POSTGRES_USER / POSTGRES_DB are created).
-#
-# Passwords come from the Unraid host's /mnt/user/tco/.env via
-# docker-compose env_file. No password may contain a single quote — the SQL
-# below interpolates them into single-quoted literals.
+# Provisions the three roles from docs/architecture.md § Multi-tenancy at first Postgres
+# start. Passwords come from /mnt/user/tco/.env and must not contain a single quote —
+# they're interpolated into single-quoted SQL literals.
 
 set -euo pipefail
 

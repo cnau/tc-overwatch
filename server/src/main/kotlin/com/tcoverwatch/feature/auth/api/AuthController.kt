@@ -20,9 +20,7 @@ class AuthController {
         @AuthenticationPrincipal principal: AuthenticatedPrincipal?,
     ): MeResponse = principal?.toResponse() ?: throw UnauthenticatedException("Sign in required")
 
-    // Bearer tokens are stateless — the server holds no session. The client clears
-    // its stored token; this endpoint exists for symmetry / future server-side
-    // revocation list. Always 204 in v0.
+    // Stateless bearer tokens: the client clears its own. Kept for a future revocation list.
     @PostMapping("/logout")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun logout() = Unit

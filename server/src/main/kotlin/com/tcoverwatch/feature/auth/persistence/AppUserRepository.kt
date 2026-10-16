@@ -7,9 +7,8 @@ import java.util.UUID
 
 @Repository
 interface AppUserRepository : JpaRepository<AppUser, UUID> {
-    // Cross-tenant lookup for the auth gate, before any tenant context is set.
-    // Routes through a SECURITY DEFINER function that bypasses RLS. Only callable
-    // from contexts that genuinely need to find a user across tenants (sign-in flow).
+    // Cross-tenant, via a SECURITY DEFINER function that bypasses RLS: sign-in runs before
+    // any tenant context exists. Don't call it from anywhere else.
     @Query(value = "SELECT * FROM tco.find_app_user_by_email(:email)", nativeQuery = true)
     fun findByEmailCrossTenant(email: String): AppUser?
 }
