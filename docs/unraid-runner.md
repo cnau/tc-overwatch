@@ -25,20 +25,25 @@ This repo is **public**, and the runner mounts the host Docker socket. Those two
 facts together mean a job on this runner is effectively root on the Unraid box.
 Three things keep that safe, and all three are load-bearing:
 
-1. **Every self-hosted job is guarded by
-   `if: github.event_name == 'push' && github.ref == 'refs/heads/main'`.** Only
-   code already merged to `main` reaches the box. A pull request from a fork
-   builds on GitHub-hosted runners and never touches this one. Removing that
-   guard is the single change that would turn any drive-by fork PR into remote
-   code execution on a home network.
-2. **Repo Settings → Actions → General → Fork pull request workflows** set to
-   *Require approval for all external contributors* (GitHub's default for public
-   repos). Defence in depth for the same attack.
+1. **Repo Settings → Actions → General → Approval for running fork pull request
+   workflows** set to *Require approval for all external contributors*. This is
+   the guard that stops a fork. A `pull_request` run uses the workflow file
+   *from the PR*, so a fork can add its own `runs-on: [self-hosted, unraid]`
+   job; only the approval gate keeps it from running. GitHub's default,
+   *first-time contributors*, is not enough: one merged typo fix unlocks every
+   later PR from that account. Check it with
+   `gh api repos/cnau/tc-overwatch/actions/permissions/fork-pr-contributor-approval`
+   — it must print `all_external_contributors`. Never approve a fork PR run
+   that touches `.github/` without reading the diff.
+2. **Every self-hosted job is guarded by
+   `if: github.event_name == 'push' && github.ref == 'refs/heads/main'`.** This
+   stops *our own* workflow from running on the box for a PR, including a fork
+   PR you approve. It can't stop a fork that rewrites the guard — that is guard 1.
 3. **The runner's PAT is scoped to this repo only** — see below.
 
 The runner also mounts the app's `/mnt/user/tco/.env` (step 3), which puts the pilot's secrets
 inside its filesystem. That grants a job nothing it couldn't already take — the Docker socket is
-root-equivalent on the host — so the boundary that matters stays guard 1, not that mount.
+root-equivalent on the host — so the boundaries that matter stay guards 1 and 2, not that mount.
 
 The runner is deliberately its **own compose project** (`name: tco-runner`), not a service in
 `docker-compose.unraid.yml`. A deploy job runs `docker compose up -d backend` against the app
